@@ -13,6 +13,9 @@
 #   PICK_DEPS[i]    comma-separated IDs of earlier rows; tokens are trimmed.
 #   PICK_DIRECT[i]  explicit choices.
 #   PICK_AUTO[i]    retained automatic choices.
+#   PICK_DEPENDENCY_MODE: cascade (default) or lock.
+#     cascade: unchecking a prerequisite also unchecks its dependents.
+#     lock: a selected prerequisite stays locked while required.
 #   IDs referenced by PICK_DEPS must be nonempty, comma-free, and have no
 #   leading/trailing spaces or tabs. Display labels have no such token rule.
 #
@@ -20,12 +23,14 @@
 #   Empty submission is valid. Returns 0 submitted, 1 cancelled, 2 on
 #   invalid input or no interactive terminal. Read results only on 0.
 # pick_run: dependency-aware selection, starting with nothing checked.
-#   Live closure, locks, retained auto choices, and nonempty submission.
+#   Live closure, dependency-mode deselection, retained auto choices, and
+#   nonempty submission.
 #   Returns 0 submitted, 1 on cancellation or failure (0.1 compatibility).
 # pick_close: noninteractive dependency closure from DIRECT + retained AUTO.
 #   Returns 0 or 1; failed closure leaves selection state unchanged.
 # pick_find_id / pick_find_label <value>: print index or -1.
-# pick_locked_by <index>: print labels of selected immediate dependents.
+# pick_locked_by <index>: print labels of selected immediate dependents
+#   in lock mode; print nothing in cascade mode.
 # pick_split_csv <text>: fills PICK_SPLIT, trimming tokens and preserving
 #   empty tokens, including a trailing one; empty input means no tokens.
 #
@@ -261,6 +266,7 @@ pick_close() {
 }
 
 pick_locked_by() {
+    [[ ${PICK_DEPENDENCY_MODE:-cascade} == lock ]] || return 0
     pick_dep_names_into "$1"
     printf '%s' "$PICK_DEPNAMES"
 }
@@ -287,6 +293,7 @@ pick_recalc_locks() {
     n=${#PICK_LABEL[@]}
     for ((i=0; i<n; i++)); do PICK_FLOCK[i]=; done
     [[ ${PICK_MODE:-dependencies} == dependencies ]] || return 0
+    [[ ${PICK_DEPENDENCY_MODE:-cascade} == lock ]] || return 0
     for ((i=0; i<n; i++)); do
         [[ ${PICK_STATE[i]:-0} == 1 && ${PICK_VALID[i]:-1} != 0 ]] || continue
         pick_dep_names_into "$i"
@@ -616,12 +623,7 @@ pick_toggle() {
     depnames=$(pick_locked_by "$idx")
     if [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
         if [[ -n $depnames ]]; then PICK_MSG="Locked: required by $depnames"; return 0; fi
-        PICK_STATE[idx]=0
-        PICK_DIRECT[idx]=0
-        # Explicit deselection clears retained history so a later clear of
-        # directs cannot resurrect this item; a live dependency re-adds it.
-        PICK_AUTO[idx]=0
-        PICK_MSG=
+        pick_deselect "$idx"
         pick_recalc_locks
         return 0
     fi
@@ -643,6 +645,37 @@ pick_toggle() {
     PICK_MSG=
     pick_recalc_locks
     return 0
+}
+
+pick_deselect() {
+    local idx=$1 i k j removed=0
+    PICK_STATE[idx]=0
+    PICK_DIRECT[idx]=0
+    PICK_AUTO[idx]=0
+    if [[ ${PICK_DEPENDENCY_MODE:-cascade} == cascade ]]; then
+        # Dependencies precede dependents in the validated input, so a
+        # forward pass propagates removal through the entire dependent chain.
+        for ((i=idx+1; i<${#PICK_LABEL[@]}; i++)); do
+            [[ ${PICK_STATE[i]:-0} == 1 ]] || continue
+            pick_split_csv "${PICK_DEPS[i]:-}"
+            for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
+                j=$(pick_find_id "${PICK_SPLIT[k]}")
+                if [[ $j -ge 0 && ${PICK_STATE[j]:-0} != 1 ]]; then
+                    # Clear retained history too, so the next closure does
+                    # not reintroduce the dependent or its removed prerequisite.
+                    PICK_STATE[i]=0
+                    PICK_DIRECT[i]=0
+                    PICK_AUTO[i]=0
+                    removed=$((removed + 1))
+                    break
+                fi
+            done
+        done
+    fi
+    PICK_MSG=
+    if ((removed)); then
+        PICK_MSG="Also unchecked $removed dependent row(s)."
+    fi
 }
 
 pick_check_all() {
@@ -719,6 +752,10 @@ pick_sel_count() {
 
 pick_run() {
     local PICK_MODE=dependencies i
+    case ${PICK_DEPENDENCY_MODE:-cascade} in
+        cascade|lock) ;;
+        *) pick_err "unknown dependency mode '${PICK_DEPENDENCY_MODE}'"; return 1 ;;
+    esac
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         PICK_DIRECT[i]=0; PICK_STATE[i]=0; PICK_AUTO[i]=0
     done

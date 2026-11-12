@@ -57,9 +57,17 @@ fi
 
 `pick_run` starts unchecked and returns `0` on nonempty submission, `1` on
 cancellation or failure, preserving the 0.1 return contract. Checking a row
-checks its transitive prerequisites. A selected prerequisite stays locked
+checks its transitive prerequisites.
+
+`PICK_DEPENDENCY_MODE=cascade` (the default) lets a prerequisite be unchecked
+and also unchecks every selected row that transitively depends on it. Those
+removed rows lose their direct and retained automatic selection state.
+Other prerequisites remain selected until explicitly unchecked.
+
+`PICK_DEPENDENCY_MODE=lock` instead keeps a selected prerequisite locked
 while a selected row requires it. Automatic choices remain checked after
-becoming unlocked, until explicitly unchecked.
+becoming unlocked, until explicitly unchecked. Unknown mode names produce
+an input error. This option does not affect `pick_select`.
 
 `PICK_DIRECT` records explicit choices, `PICK_AUTO` retains automatic
 choices, and `PICK_STATE` contains the combined selection. `pick_close`
@@ -91,7 +99,7 @@ color capability produces plain text. Unknown names produce an input error.
 | Key | `pick_select` | `pick_run` |
 |---|---|---|
 | Arrows / j / k | Move | Move |
-| Space | Toggle | Toggle unless locked |
+| Space | Toggle | Toggle with cascading deselection, or refuse a locked row in lock mode |
 | a | Select all included rows | Select all included rows if closure succeeds |
 | n | Clear all | Clear direct choices; retain automatic choices |
 | Enter | Submit, including empty | Submit a nonempty selection |
@@ -105,7 +113,8 @@ terminal width.
 
 - `pick_find_id <id>` / `pick_find_label <label>` print the first matching
   index, or `-1` if absent. Labels need not be unique; IDs are unique.
-- `pick_locked_by <index>` prints labels of selected immediate dependents.
+- `pick_locked_by <index>` prints labels of selected immediate dependents in
+  lock mode, or nothing in cascade mode.
 - `pick_split_csv <text>` fills `PICK_SPLIT` with trimmed fields, retaining
   leading, middle and trailing empty fields. Empty input yields no fields.
 - `PICK_VERSION` identifies the API version. Other `pick_*` functions and
@@ -121,7 +130,8 @@ NO_COLOR=1 /bin/bash examples/checkbox.sh
 
 The examples display the prompt and print its result. The first shows initial
 selection, repeated labels with distinct IDs, and colors. The second shows
-transitive automatic selection and locks.
+transitive automatic selection and cascading deselection; pass `lock` to
+compare the locking behavior.
 
 ## License
 

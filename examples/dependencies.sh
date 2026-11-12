@@ -2,6 +2,7 @@
 # Dependency-aware selection using IDs independently of display text.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
 source "$ROOT/lib/picker.sh" || exit 2
+PICK_DEPENDENCY_MODE=${1:-cascade}
 
 PICK_ID=(base addon bundle notes)
 PICK_LABEL=('Base, shared' 'Add-on' 'Bundle' 'Notes')
