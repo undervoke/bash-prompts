@@ -4,12 +4,12 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
 
 names=(select checkbox dependencies lock keybindings wizard)
 descriptions=(
-    'Single choice: move and press Enter'
-    'Multi-select, initial choices, and colors'
-    'Automatic prerequisites and cascading deselection'
-    'Dependency selection with locked prerequisites'
-    'Custom keys: w/s, x, A/C, f, z'
-    'Three steps with Back, Next, and saved answers'
+    'Choose one item from grouped options'
+    'Check several items, some preselected'
+    'Checking an item adds what it requires'
+    'Required items stay locked while needed'
+    'The same checklist with remapped keys'
+    'Steps with back navigation and a review'
 )
 
 list_examples() {
@@ -49,16 +49,13 @@ if [[ ! -t 0 || ! -t 1 ]]; then
 fi
 
 source "$ROOT/lib/picker.sh" || exit 2
+PICK_PROMPT='bash-prompts examples'
 PICK_ID=("${names[@]}")
 PICK_LABEL=()
-PICK_GROUP=()
 for ((i=0; i<${#names[@]}; i++)); do
-    PICK_LABEL[i]="${names[i]}: ${descriptions[i]}"
-    PICK_GROUP[i]=Examples
+    PICK_LABEL[i]=$(printf '%-13s %s' "${names[i]}" "${descriptions[i]}")
 done
 PICK_FOCUS_COLOR=cyan
-PICK_SELECTED_COLOR=green
-PICK_GROUP_COLOR=blue
 
 while true; do
     if pick_select; then
@@ -68,7 +65,11 @@ while true; do
         if ((rc == 1)); then exit 0; fi
         exit "$rc"
     fi
+    # Each example runs inline below the menu's position; its result stays
+    # in the scrollback and the menu reopens underneath it.
+    printf '== %s ==\n' "$PICK_VALUE"
     run_example "$PICK_VALUE"
     rc=$?
     if ((rc > 1)); then printf 'Example ended with status %s.\n' "$rc" >&2; fi
+    printf '\n'
 done

@@ -3,6 +3,7 @@
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
 source "$ROOT/lib/picker.sh" || exit 2
 
+PICK_PROMPT='Which items should be included?'
 PICK_ID=(editor_primary formatter editor_notes drafts)
 PICK_LABEL=('Editor' 'Formatter' 'Editor' 'Notes, drafts')
 PICK_GROUP=(Tools Tools Documents Documents)
@@ -12,14 +13,15 @@ PICK_SELECTED_COLOR=green
 PICK_GROUP_COLOR=blue
 
 if pick_multiselect; then
-    printf 'Submitted selection (empty is valid):\n'
-    for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
-        [[ ${PICK_STATE[i]} == 1 ]] || continue
-        printf '  %s -> %s\n' "${PICK_ID[i]}" "${PICK_LABEL[i]}"
+    ids=
+    pick_selected_indices
+    for i in "${PICK_SELECTED_INDICES[@]}"; do
+        ids="${ids:+$ids, }${PICK_ID[i]}"
     done
+    printf '%s %s\n' "$PICK_PROMPT" "${ids:-(none)}"
 else
     rc=$?
-    if [[ $rc == 1 ]]; then printf 'Selection cancelled.\n'
-    else printf 'Unable to open selection (status %s).\n' "$rc" >&2; fi
+    if [[ $rc == 1 ]]; then printf 'Cancelled.\n'
+    else printf 'Prompt failed (status %s).\n' "$rc" >&2; fi
     exit "$rc"
 fi
