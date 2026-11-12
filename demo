@@ -2,8 +2,9 @@
 # Repository example launcher; each example owns its interaction and result.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
 
-names=(checkbox dependencies lock keybindings wizard)
+names=(select checkbox dependencies lock keybindings wizard)
 descriptions=(
+    'Single choice: move and press Enter'
     'Multi-select, initial choices, and colors'
     'Automatic prerequisites and cascading deselection'
     'Dependency selection with locked prerequisites'
@@ -19,13 +20,13 @@ list_examples() {
 }
 
 usage() {
-    printf 'Usage: %s [checkbox|dependencies|lock|keybindings|wizard|--list]\n' "$0"
+    printf 'Usage: %s [select|checkbox|dependencies|lock|keybindings|wizard|--list]\n' "$0"
 }
 
 run_example() {
     case $1 in
         lock) /bin/bash "$ROOT/examples/dependencies.sh" lock ;;
-        checkbox|dependencies|keybindings|wizard)
+        select|checkbox|dependencies|keybindings|wizard)
             /bin/bash "$ROOT/examples/$1.sh"
             ;;
         *) printf 'Unknown example: %s\n' "$1" >&2; usage >&2; return 2 ;;
@@ -60,7 +61,6 @@ PICK_SELECTED_COLOR=green
 PICK_GROUP_COLOR=blue
 
 while true; do
-    PICK_STATE=()
     if pick_select; then
         :
     else
@@ -68,13 +68,7 @@ while true; do
         if ((rc == 1)); then exit 0; fi
         exit "$rc"
     fi
-    for ((i=0; i<${#PICK_ID[@]}; i++)); do
-        [[ ${PICK_STATE[i]:-0} == 1 ]] || continue
-        run_example "${PICK_ID[i]}"
-        rc=$?
-        if ((rc != 0)); then
-            if ((rc > 1)); then printf 'Example ended with status %s.\n' "$rc" >&2; fi
-            break
-        fi
-    done
+    run_example "$PICK_VALUE"
+    rc=$?
+    if ((rc > 1)); then printf 'Example ended with status %s.\n' "$rc" >&2; fi
 done

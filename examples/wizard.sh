@@ -45,7 +45,7 @@ while true; do
                 PICK_STATE=("${format_state[@]}")
                 ;;
         esac
-        if pick_select; then
+        if pick_multiselect; then
             case $wizard_step in
                 1) component_state=("${PICK_STATE[@]}") ;;
                 2) format_state=("${PICK_STATE[@]}") ;;

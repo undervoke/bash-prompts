@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rebind every action; the same key arrays work with either selection API.
+# Rebind every action; the same key arrays serve the interactive APIs.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
 source "$ROOT/lib/picker.sh" || exit 2
 
@@ -20,7 +20,7 @@ PICK_FOCUS_COLOR=cyan
 PICK_SELECTED_COLOR=green
 PICK_GROUP_COLOR=blue
 
-if pick_select; then
+if pick_multiselect; then
     printf 'Submitted selection:\n'
     for ((i=0; i<${#PICK_ID[@]}; i++)); do
         [[ ${PICK_STATE[i]} == 1 ]] || continue

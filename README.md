@@ -1,9 +1,33 @@
 # bash-prompts
 
-Grouped interactive selection in Bash. `pick_select` provides ordinary
-multi-selection; `pick_run` adds dependency-aware selection. Both use the
-same terminal UI. Requires Bash 3.2+ and system `tput`/`stty`. Exercised on macOS;
-other platforms are not yet verified.
+Grouped interactive selection in Bash:
+
+- `pick_select`: one highlighted item, returned as an ID in `PICK_VALUE`.
+- `pick_multiselect`: checked items, returned as flags in `PICK_STATE`.
+- `pick_run`: dependency-aware checked items.
+
+All use the same terminal UI. Requires Bash 3.2+ and system `tput`/`stty`.
+Exercised on macOS; other platforms are not yet verified.
+
+## Single select
+
+```bash
+source ./lib/picker.sh
+PICK_ID=(terminal editor browser)
+PICK_LABEL=(Terminal Editor Browser)
+PICK_GROUP=(Workspace Workspace Tools)
+PICK_VALUE=editor
+
+if pick_select; then
+    printf 'Selected ID: %s\n' "$PICK_VALUE"
+fi
+```
+
+Move with Up/Down or k/j and press Enter to submit the highlighted row.
+`PICK_VALUE` supplies the initial focus and receives the submitted ID.
+Use `unset PICK_VALUE` to start at the first included row. A supplied initial
+ID must exist and be included. Cancel leaves `PICK_VALUE` unchanged.
+Checkbox state and dependency inputs do not affect single selection.
 
 ## Multi-select
 
@@ -14,7 +38,7 @@ PICK_LABEL=('Editor' 'Formatter' 'Notes, drafts')
 PICK_GROUP=(Tools Tools Documents)
 PICK_STATE=(1 0 0)
 
-if pick_select; then
+if pick_multiselect; then
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         [[ ${PICK_STATE[i]} == 1 ]] || continue
         printf '%s\n' "${PICK_ID[i]}"
@@ -25,23 +49,22 @@ else
 fi
 ```
 
-Parallel, dense, zero-based arrays describe each row:
+Parallel, dense, zero-based arrays describe each row; `PICK_VALUE` is a scalar:
 
-| Array | Contract |
+| Input | Contract |
 |---|---|
 | `PICK_ID` | Unique identity. An unset entry falls back to its label. |
 | `PICK_LABEL` | Display text; labels may repeat when IDs differ. |
 | `PICK_GROUP` | Group text. Unset means an unnamed group. |
 | `PICK_VALID` | `0` excludes a row; `1` or unset includes it. |
-| `PICK_STATE` | Selected flags (`0`/`1`), used as both input and output. |
+| `PICK_STATE` | Selected flags (`0`/`1`) for multi-selection, input and output. |
+| `PICK_VALUE` | Initial and submitted ID for single selection. |
 
-`pick_select` keeps the incoming selected flags, excludes invalid rows,
+`pick_multiselect` keeps the incoming selected flags, excludes invalid rows,
 and accepts an empty selection. Dependency arrays do not affect it.
-Return codes: `0` submitted, `1` cancelled, `2` invalid input, no selectable
-rows, or an unavailable interactive terminal. Read the result on `0`.
-Rows retain their input indices; display groups follow first appearance,
-with input order within each group. The UI writes to the terminal on stdout;
-results are returned in arrays. One `PICK_*` state is active per Bash process.
+Both `pick_select` and `pick_multiselect` return `0` on submission, `1` on
+cancellation, or `2` for invalid input, no selectable rows, or an unavailable
+interactive terminal. Read results on `0`.
 
 ## Dependency-aware selection
 
@@ -67,7 +90,7 @@ Other prerequisites remain selected until explicitly unchecked.
 `PICK_DEPENDENCY_MODE=lock` instead keeps a selected prerequisite locked
 while a selected row requires it. Automatic choices remain checked after
 becoming unlocked, until explicitly unchecked. Unknown mode names produce
-an input error. This option does not affect `pick_select`.
+an input error. This option affects only `pick_run`.
 
 `PICK_DIRECT` records explicit choices, `PICK_AUTO` retains automatic
 choices, and `PICK_STATE` contains the combined selection. `pick_close`
@@ -88,15 +111,18 @@ PICK_SELECTED_COLOR=green
 PICK_GROUP_COLOR=blue
 ```
 
-Colors are optional for both entry points and default to terminal colors.
+Colors are optional for all interactive entry points and default to terminal colors.
 Supported values are empty, `default`, `black`, `red`, `green`, `yellow`,
 `blue`, `magenta`, `cyan`, and `white`. Focus color takes precedence over
-selected color. A nonempty `NO_COLOR`, `TERM=dumb`, or unavailable terminal
-color capability produces plain text. Unknown names produce an input error.
+selected color. Selected color applies to checked rows. A nonempty `NO_COLOR`,
+`TERM=dumb`, or unavailable terminal color capability produces plain text.
+Unknown names produce an input error.
 
 ## Keys
 
-Both interactive APIs read these arrays at the start of each call.
+All interactive APIs read their active bindings at the start of each call.
+Single selection uses Up, Down, Submit, and Cancel; multi-selection and
+dependency selection also use Toggle, All, and Clear.
 Defaults are initialized when the library is sourced:
 
 ```bash
@@ -125,18 +151,18 @@ normalizes to `Space`. Arrow tokens recognize unmodified CSI and SS3 terminal se
 Empty arrays disable an action. Unmapped keys have no effect. Each key
 belongs to one action; repeated aliases within that action are deduplicated.
 Unknown tokens or conflicting actions fail before opening the UI:
-`pick_select` returns `2`, `pick_run` returns `1`.
+`pick_select` and `pick_multiselect` return `2`; `pick_run` returns `1`.
 
 The help lines show the active bindings. The actions have these semantics:
 
-| Action | `pick_select` | `pick_run` |
-|---|---|---|
-| Up / down | Move | Move |
-| Toggle | Toggle | Toggle with cascading deselection, or refuse a locked row in lock mode |
-| All | Select all included rows | Select all included rows if closure succeeds |
-| Clear | Clear all | Clear direct choices; retain automatic choices |
-| Submit | Submit, including empty | Submit a nonempty selection |
-| Cancel | Cancel | Cancel |
+| Action | `pick_select` | `pick_multiselect` | `pick_run` |
+|---|---|---|---|
+| Up / down | Move highlight | Move | Move |
+| Toggle | — | Toggle | Toggle with cascading deselection, or refuse a locked row in lock mode |
+| All | — | Select all included rows | Select all included rows if closure succeeds |
+| Clear | — | Clear all | Clear direct choices; retain automatic choices |
+| Submit | Return highlighted ID | Submit, including empty | Submit a nonempty selection |
+| Cancel | Cancel | Cancel | Cancel |
 
 Esc waits up to one second to distinguish it from an escape sequence.
 Ctrl-C remains a terminal signal handled through the caller's INT handler.
@@ -157,14 +183,15 @@ are clipped to terminal width.
 ## Interactive examples
 
 Run `./demo` from the repository root. The launcher uses `pick_select`:
-check one or more examples with Space, then press Enter to run them in list
-order. Completing the batch or cancelling an example returns to a fresh
-picker. Press `q` or Esc in that picker to exit the launcher.
+move to an example with Up/Down and press Enter to run it immediately.
+Completing or cancelling the example returns to the launcher with that item
+still highlighted. Press `q` or Esc there to exit.
 Use a name to run an example directly and return its exit status:
 
 ```bash
 ./demo
 ./demo --list
+./demo select
 ./demo checkbox
 ./demo dependencies
 ./demo lock
@@ -174,12 +201,13 @@ NO_COLOR=1 ./demo checkbox
 ```
 
 Sources are in `examples/`; each script can also be run directly with Bash.
-The examples display the prompt and print its result. The first shows initial
-selection, repeated labels with distinct IDs, and colors. The second shows
-transitive automatic selection and cascading deselection; pass `lock` to
-compare the locking behavior.
+The examples display a prompt and print its result. `select` shows single
+selection with an initial focus; `checkbox` shows initial checked state,
+repeated labels with distinct IDs, and colors. `dependencies` shows
+transitive automatic selection and cascading deselection; `lock` shows
+the alternative locking behavior.
 
-`examples/wizard.sh` calls `pick_select` for two steps and displays a third
+`examples/wizard.sh` calls `pick_multiselect` for two steps and displays a third
 review step. After submitting each prompt with Enter, use `n`/Enter for
 Next, `b` for Back, or `e` to edit that step, followed by Enter. Previously
 submitted selections are restored when revisiting a step. At review, use

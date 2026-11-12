@@ -8,7 +8,8 @@
 #   PICK_LABEL[i]   display text.
 #   PICK_GROUP[i]   group text (unset means an unnamed group).
 #   PICK_VALID[i]   1 includes a row, 0 excludes it; unset means 1.
-#   PICK_STATE[i]   0/1 selected state: input/output for pick_select.
+#   PICK_STATE[i]   0/1 selected state: input/output for pick_multiselect.
+#   PICK_VALUE      single selection input/output ID; unset starts at first row.
 # Dependency API additionally uses:
 #   PICK_DEPS[i]    comma-separated IDs of earlier rows; tokens are trimmed.
 #   PICK_DIRECT[i]  explicit choices.
@@ -19,9 +20,12 @@
 #   IDs referenced by PICK_DEPS must be nonempty, comma-free, and have no
 #   leading/trailing spaces or tabs. Display labels have no such token rule.
 #
-# pick_select: grouped multi-select, retaining incoming PICK_STATE.
-#   Empty submission is valid. Returns 0 submitted, 1 cancelled, 2 on
-#   invalid input or no interactive terminal. Read results only on 0.
+# pick_select: single choice; Up/Down moves focus, Submit returns its ID in
+#   PICK_VALUE. A provided initial ID must identify an included row.
+# pick_multiselect: grouped checkboxes, retaining incoming PICK_STATE.
+#   Empty submission is valid.
+# Both return 0 submitted, 1 cancelled, 2 on invalid input or no interactive
+# terminal. Read results only on 0.
 # pick_run: dependency-aware selection, starting with nothing checked.
 #   Live closure, dependency-mode deselection, retained auto choices, and
 #   nonempty submission.
@@ -43,6 +47,7 @@
 #   Up Down Left Right Space Enter Esc Tab Backspace.
 # Empty arrays disable an action. A key may belong to only one action.
 # Ctrl-C remains a terminal signal. The map is read on each interactive call.
+# Toggle, All, and Clear bindings apply only to multiselect and dependencies.
 #
 # Optional colors: PICK_FOCUS_COLOR, PICK_SELECTED_COLOR, PICK_GROUP_COLOR.
 #   Empty/default means terminal default. Names: black, red, green, yellow,
@@ -58,6 +63,7 @@ PICK_DEPS=()
 PICK_VALID=()
 PICK_DIRECT=()
 PICK_STATE=()
+unset PICK_VALUE
 PICK_AUTO=()
 PICK_SPLIT=()
 PICK_FOCUS=()
@@ -456,6 +462,10 @@ pick_clear_screen() {
 }
 
 pick_title() {
+    if [[ $PICK_MODE == single ]]; then
+        printf 'Choose one item\n'
+        return 0
+    fi
     # One-line header with per-group selected/total counts.
     local gi g out=
     for ((gi=0; gi<${#PICK_GROUPS[@]}; gi++)); do
@@ -477,6 +487,7 @@ pick_render() {
     case $rows in ''|*[!0-9]*) rows=24 ;; esac
     case $cols in ''|*[!0-9]*) cols=80 ;; esac
     h=$((rows - 7))
+    [[ $PICK_MODE != single ]] || h=$((rows - 6))
     ((h < 3)) && h=3
     local drow
     drow=${PICK_FOCUS_ROW[PICK_CURSOR]:-0}
@@ -492,12 +503,17 @@ pick_render() {
         PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_ROW_STYLE
         PICK_FRAME[${#PICK_FRAME[@]}]="$PICK_ROW"
     done
-    local clear_hint="clear all"
-    [[ $PICK_MODE == dependencies ]] && clear_hint="clear directs"
-    PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[0]} up | ${PICK_KEY_HELP[1]} down | ${PICK_KEY_HELP[2]} toggle"
-    PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[3]} all | ${PICK_KEY_HELP[4]} $clear_hint"
+    if [[ $PICK_MODE == single ]]; then
+        PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[0]} up | ${PICK_KEY_HELP[1]} down"
+    else
+        local clear_hint="clear all"
+        [[ $PICK_MODE == dependencies ]] && clear_hint="clear directs"
+        PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[0]} up | ${PICK_KEY_HELP[1]} down | ${PICK_KEY_HELP[2]} toggle"
+        PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[3]} all | ${PICK_KEY_HELP[4]} $clear_hint"
+    fi
     PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[5]} submit | ${PICK_KEY_HELP[6]} cancel"
     if [[ -n $PICK_MSG ]]; then PICK_FRAME[${#PICK_FRAME[@]}]="$PICK_MSG"
+    elif [[ $PICK_MODE == single ]]; then PICK_FRAME[${#PICK_FRAME[@]}]="Submit returns the highlighted item."
     else PICK_FRAME[${#PICK_FRAME[@]}]="Submit returns the checked selection."; fi
     if [[ $rows != "$PICK_PREV_ROWS" || $cols != "$PICK_PREV_COLS" ]]; then
         # A handler may have run during the tput probes above; the refusal
@@ -595,6 +611,15 @@ pick_item_line() {
     local idx=$1 pos=$2 mark="[ ]" suffix= kind= name= reqs= k j
     name=${PICK_LABEL[idx]}
     PICK_ROW_STYLE=
+    if [[ $PICK_MODE == single ]]; then
+        mark=' '
+        if ((pos == PICK_CURSOR)); then
+            mark='>'
+            PICK_ROW_STYLE=$PICK_STYLE_FOCUS
+        fi
+        PICK_ROW="$mark [${PICK_GROUP[idx]-}] $name"
+        return 0
+    fi
     if [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
         mark="[x]"
         PICK_ROW_STYLE=$PICK_STYLE_SELECTED
@@ -797,11 +822,16 @@ pick_run() {
 }
 
 pick_interact() {
-    local key seq part rc=1 start
+    local key seq part rc=1 start i
     pick_prepare_keys || return 2
     pick_build_focus
     ((${#PICK_FOCUS[@]})) || { pick_err "no selectable items"; return 2; }
     PICK_CURSOR=0
+    if [[ $PICK_MODE == single ]]; then
+        for ((i=0; i<${#PICK_FOCUS[@]}; i++)); do
+            if [[ ${PICK_FOCUS[i]} == "$PICK_INITIAL_INDEX" ]]; then PICK_CURSOR=$i; break; fi
+        done
+    fi
     PICK_OFFSET=0
     PICK_MSG=
     PICK_GOT_SIGNAL=
@@ -936,7 +966,31 @@ pick_prepare_colors() {
 }
 
 pick_select() {
-    local PICK_MODE=select i
+    local PICK_MODE=single PICK_INITIAL_INDEX=-1 index
+    pick_validate_items || return 2
+    if [[ ${PICK_VALUE+x} ]]; then
+        index=$(pick_find_id "$PICK_VALUE")
+        if ((index < 0)); then
+            pick_err "unknown initial ID '$PICK_VALUE'"
+            return 2
+        fi
+        if [[ ${PICK_VALID[index]:-1} == 0 ]]; then
+            pick_err "initial ID '$PICK_VALUE' is not available"
+            return 2
+        fi
+        PICK_INITIAL_INDEX=$index
+    fi
+    if pick_interact; then
+        index=${PICK_FOCUS[PICK_CURSOR]}
+        PICK_VALUE=${PICK_ID[index]-${PICK_LABEL[index]}}
+        return 0
+    else
+        return $?
+    fi
+}
+
+pick_multiselect() {
+    local PICK_MODE=multi i
     pick_validate_items || return 2
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         if [[ ${PICK_VALID[i]:-1} != 0 && ${PICK_STATE[i]:-0} == 1 ]]; then PICK_STATE[i]=1
@@ -980,9 +1034,15 @@ pick_prepare_keys() {
     PICK_KEY_HELP=()
     pick_bind_keys up "${PICK_KEYS_UP[@]}" || return 1
     pick_bind_keys down "${PICK_KEYS_DOWN[@]}" || return 1
-    pick_bind_keys toggle "${PICK_KEYS_TOGGLE[@]}" || return 1
-    pick_bind_keys all "${PICK_KEYS_ALL[@]}" || return 1
-    pick_bind_keys clear "${PICK_KEYS_CLEAR[@]}" || return 1
+    if [[ $PICK_MODE == single ]]; then
+        pick_bind_keys toggle
+        pick_bind_keys all
+        pick_bind_keys clear
+    else
+        pick_bind_keys toggle "${PICK_KEYS_TOGGLE[@]}" || return 1
+        pick_bind_keys all "${PICK_KEYS_ALL[@]}" || return 1
+        pick_bind_keys clear "${PICK_KEYS_CLEAR[@]}" || return 1
+    fi
     pick_bind_keys submit "${PICK_KEYS_SUBMIT[@]}" || return 1
     pick_bind_keys cancel "${PICK_KEYS_CANCEL[@]}" || return 1
 }

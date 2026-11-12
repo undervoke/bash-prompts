@@ -11,7 +11,7 @@ PICK_FOCUS_COLOR=cyan
 PICK_SELECTED_COLOR=green
 PICK_GROUP_COLOR=blue
 
-if pick_select; then
+if pick_multiselect; then
     printf 'Submitted selection (empty is valid):\n'
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         [[ ${PICK_STATE[i]} == 1 ]] || continue
