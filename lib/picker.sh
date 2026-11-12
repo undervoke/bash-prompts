@@ -34,6 +34,16 @@
 # pick_split_csv <text>: fills PICK_SPLIT, trimming tokens and preserving
 #   empty tokens, including a trailing one; empty input means no tokens.
 #
+# Optional keys (arrays; assign after sourcing, each replaces its action's keys):
+#   PICK_KEYS_UP=(Up k)          PICK_KEYS_DOWN=(Down j)
+#   PICK_KEYS_TOGGLE=(Space)     PICK_KEYS_ALL=(a)
+#   PICK_KEYS_CLEAR=(n)          PICK_KEYS_SUBMIT=(Enter)
+#   PICK_KEYS_CANCEL=(q Q Esc)
+# Elements are a single printable ASCII character or one of:
+#   Up Down Left Right Space Enter Esc Tab Backspace.
+# Empty arrays disable an action. A key may belong to only one action.
+# Ctrl-C remains a terminal signal. The map is read on each interactive call.
+#
 # Optional colors: PICK_FOCUS_COLOR, PICK_SELECTED_COLOR, PICK_GROUP_COLOR.
 #   Empty/default means terminal default. Names: black, red, green, yellow,
 #   blue, magenta, cyan, white. Focus takes precedence over selected color.
@@ -75,6 +85,7 @@ PICK_STYLE_GROUP=
 PICK_STYLE_RESET=
 PICK_SAVED_INT=
 PICK_SAVED_TERM=
+PICK_SAVED_STTY=
 PICK_TRAPS_ARMED=0
 PICK_SNAP_DIRECT=()
 PICK_SNAP_STATE=()
@@ -84,6 +95,17 @@ PICK_QUIET=0
 PICK_DEPNAMES=
 PICK_GTOT=0
 PICK_GSEL=0
+PICK_KEYS_UP=(Up k)
+PICK_KEYS_DOWN=(Down j)
+PICK_KEYS_TOGGLE=(Space)
+PICK_KEYS_ALL=(a)
+PICK_KEYS_CLEAR=(n)
+PICK_KEYS_SUBMIT=(Enter)
+PICK_KEYS_CANCEL=(q Q Esc)
+PICK_BOUND_KEYS=()
+PICK_BOUND_ACTIONS=()
+PICK_KEY_HELP=()
+PICK_KEY_ACTION=
 
 pick_err() {
     # With PICK_QUIET set (interactive use), route the message to the
@@ -392,6 +414,12 @@ pick_on_term() {
 pick_setup_term() {
     [[ -t 0 && -t 1 ]] || return 1
     pick_prepare_colors || return 1
+    PICK_SAVED_STTY=$(stty -g) || return 1
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+    # Keep erase characters available to the key decoder even between reads.
+    # ISIG stays enabled so Ctrl-C still reaches the caller's signal handler.
+    stty -echo -icanon min 1 time 0 || return 1
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
     # Capability checks stay silent; the sequences below go to the terminal.
     if tput clear >/dev/null 2>&1; then PICK_CLEAR=1; else PICK_CLEAR=0; fi
     if tput smcup >/dev/null 2>&1; then PICK_SMCUP=1; else PICK_SMCUP=0; fi
@@ -400,7 +428,9 @@ pick_setup_term() {
     # further tput invocations. An empty result means unsupported.
     PICK_CUP=$(tput cup 0 0 2>/dev/null || true)
     PICK_EL=$(tput el 2>/dev/null || true)
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
     if ((PICK_CIVIS)); then tput civis || true; fi
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
     if ((PICK_SMCUP)); then tput smcup || true; else pick_clear_screen; fi
     return 0
 }
@@ -412,6 +442,8 @@ pick_cleanup_term() {
     PICK_CIVIS=0
     if [[ -n $PICK_STYLE_RESET ]]; then printf '%s' "$PICK_STYLE_RESET"; fi
     PICK_STYLE_RESET=
+    if [[ -n $PICK_SAVED_STTY ]]; then stty "$PICK_SAVED_STTY" || true; fi
+    PICK_SAVED_STTY=
 }
 
 pick_clear_screen() {
@@ -444,7 +476,7 @@ pick_render() {
     cols=$(tput cols 2>/dev/null || echo 80)
     case $rows in ''|*[!0-9]*) rows=24 ;; esac
     case $cols in ''|*[!0-9]*) cols=80 ;; esac
-    h=$((rows - 6))
+    h=$((rows - 7))
     ((h < 3)) && h=3
     local drow
     drow=${PICK_FOCUS_ROW[PICK_CURSOR]:-0}
@@ -462,10 +494,11 @@ pick_render() {
     done
     local clear_hint="clear all"
     [[ $PICK_MODE == dependencies ]] && clear_hint="clear directs"
-    PICK_FRAME[${#PICK_FRAME[@]}]="arrows/j/k move | space toggle | a all | n $clear_hint"
-    PICK_FRAME[${#PICK_FRAME[@]}]="enter submit | q/esc cancel"
+    PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[0]} up | ${PICK_KEY_HELP[1]} down | ${PICK_KEY_HELP[2]} toggle"
+    PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[3]} all | ${PICK_KEY_HELP[4]} $clear_hint"
+    PICK_FRAME[${#PICK_FRAME[@]}]="${PICK_KEY_HELP[5]} submit | ${PICK_KEY_HELP[6]} cancel"
     if [[ -n $PICK_MSG ]]; then PICK_FRAME[${#PICK_FRAME[@]}]="$PICK_MSG"
-    else PICK_FRAME[${#PICK_FRAME[@]}]="Enter returns the checked selection."; fi
+    else PICK_FRAME[${#PICK_FRAME[@]}]="Submit returns the checked selection."; fi
     if [[ $rows != "$PICK_PREV_ROWS" || $cols != "$PICK_PREV_COLS" ]]; then
         # A handler may have run during the tput probes above; the refusal
         # lives in pick_clear_screen itself so this clear cannot be missed.
@@ -764,7 +797,8 @@ pick_run() {
 }
 
 pick_interact() {
-    local key seq rc=1 start
+    local key seq part rc=1 start
+    pick_prepare_keys || return 2
     pick_build_focus
     ((${#PICK_FOCUS[@]})) || { pick_err "no selectable items"; return 2; }
     PICK_CURSOR=0
@@ -774,10 +808,16 @@ pick_interact() {
     PICK_PREV_COUNT=0
     PICK_PREV_ROWS=
     PICK_PREV_COLS=
-    pick_setup_term || { pick_err "interactive selection needs a terminal and valid options"; return 2; }
     pick_traps_save
     trap 'pick_on_int' INT
     trap 'pick_on_term' TERM
+    if ! pick_setup_term; then
+        pick_cleanup_term
+        pick_traps_restore
+        pick_err "interactive selection needs a terminal and valid options"
+        [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+        return 2
+    fi
     pick_recalc_locks
     while true; do
         if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
@@ -805,28 +845,57 @@ pick_interact() {
         if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
         if [[ $key == $'\e' ]]; then
             seq=
-            IFS= read -rsn2 -t 1 seq || { rc=1; break; }
+            if IFS= read -rsn1 -t 1 seq; then
+                case $seq in
+                    '['|'O')
+                        # Consume the whole terminal sequence, even if it
+                        # is unmapped, so its tail cannot trigger a plain key.
+                        while IFS= read -rsn1 -t 1 part; do
+                            [[ -z ${PICK_GOT_SIGNAL:-} ]] || break
+                            seq="$seq$part"
+                            [[ $part == [@-~] ]] && break
+                            [[ $part == [\ -?] ]] || break
+                        done
+                        ;;
+                esac
+            fi
             if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
             case $seq in
-                '[A'|'OA') PICK_MSG=; ((PICK_CURSOR > 0)) && PICK_CURSOR=$((PICK_CURSOR-1)) ;;
-                '[B'|'OB') PICK_MSG=; ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)) && PICK_CURSOR=$((PICK_CURSOR+1)) ;;
-                *) PICK_MSG="Unknown key." ;;
+                '') key=Esc ;;
+                '[A'|'OA') key=Up ;;
+                '[B'|'OB') key=Down ;;
+                '[C'|'OC') key=Right ;;
+                '[D'|'OD') key=Left ;;
+                *) key= ;;
             esac
         else
             case $key in
-                ' ') pick_action toggle ;;
-                j) PICK_MSG=; ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)) && PICK_CURSOR=$((PICK_CURSOR+1)) ;;
-                k) PICK_MSG=; ((PICK_CURSOR > 0)) && PICK_CURSOR=$((PICK_CURSOR-1)) ;;
-                a) pick_action all ;;
-                n) pick_action clear ;;
-                q|Q) rc=1; break ;;
-                ''|$'\n'|$'\r')
-                    if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
-                    if [[ $PICK_MODE == dependencies && $(pick_sel_count) == 0 ]]; then PICK_MSG="Nothing selected."
-                    else rc=0; break; fi ;;
-                *) ;;
+                ' ') key=Space ;;
+                ''|$'\n'|$'\r') key=Enter ;;
+                $'\t') key=Tab ;;
+                $'\177'|$'\b') key=Backspace ;;
             esac
         fi
+        pick_key_action "$key"
+        case $PICK_KEY_ACTION in
+            up)
+                PICK_MSG=
+                if ((PICK_CURSOR > 0)); then PICK_CURSOR=$((PICK_CURSOR - 1)); fi
+                ;;
+            down)
+                PICK_MSG=
+                if ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)); then PICK_CURSOR=$((PICK_CURSOR + 1)); fi
+                ;;
+            toggle) pick_action toggle ;;
+            all) pick_action all ;;
+            clear) pick_action clear ;;
+            cancel) rc=1; break ;;
+            submit)
+                if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
+                if [[ $PICK_MODE == dependencies && $(pick_sel_count) == 0 ]]; then PICK_MSG="Nothing selected."
+                else rc=0; break; fi
+                ;;
+        esac
     done
     pick_cleanup_term
     pick_traps_restore
@@ -874,4 +943,57 @@ pick_select() {
         else PICK_STATE[i]=0; fi
     done
     pick_interact
+}
+
+pick_bind_keys() {
+    local action=$1 key i found help=
+    local LC_ALL=C
+    shift
+    for key in "$@"; do
+        [[ $key != ' ' ]] || key=Space
+        case $key in
+            Up|Down|Left|Right|Space|Enter|Esc|Tab|Backspace|[[:graph:]]) ;;
+            *) pick_err "invalid key token '$key' for $action"; return 1 ;;
+        esac
+        found=0
+        for ((i=0; i<${#PICK_BOUND_KEYS[@]}; i++)); do
+            [[ ${PICK_BOUND_KEYS[i]} == "$key" ]] || continue
+            if [[ ${PICK_BOUND_ACTIONS[i]} != "$action" ]]; then
+                pick_err "key '$key' is assigned to both ${PICK_BOUND_ACTIONS[i]} and $action"
+                return 1
+            fi
+            found=1
+            break
+        done
+        ((found)) && continue
+        PICK_BOUND_ACTIONS[${#PICK_BOUND_KEYS[@]}]=$action
+        PICK_BOUND_KEYS[${#PICK_BOUND_KEYS[@]}]=$key
+        [[ -z $help ]] || help="$help/"
+        help="$help$key"
+    done
+    PICK_KEY_HELP[${#PICK_KEY_HELP[@]}]=${help:-off}
+}
+
+pick_prepare_keys() {
+    PICK_BOUND_KEYS=()
+    PICK_BOUND_ACTIONS=()
+    PICK_KEY_HELP=()
+    pick_bind_keys up "${PICK_KEYS_UP[@]}" || return 1
+    pick_bind_keys down "${PICK_KEYS_DOWN[@]}" || return 1
+    pick_bind_keys toggle "${PICK_KEYS_TOGGLE[@]}" || return 1
+    pick_bind_keys all "${PICK_KEYS_ALL[@]}" || return 1
+    pick_bind_keys clear "${PICK_KEYS_CLEAR[@]}" || return 1
+    pick_bind_keys submit "${PICK_KEYS_SUBMIT[@]}" || return 1
+    pick_bind_keys cancel "${PICK_KEYS_CANCEL[@]}" || return 1
+}
+
+pick_key_action() {
+    local key=$1 i
+    PICK_KEY_ACTION=
+    for ((i=0; i<${#PICK_BOUND_KEYS[@]}; i++)); do
+        if [[ ${PICK_BOUND_KEYS[i]} == "$key" ]]; then
+            PICK_KEY_ACTION=${PICK_BOUND_ACTIONS[i]}
+            return 0
+        fi
+    done
 }

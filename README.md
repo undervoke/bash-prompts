@@ -2,7 +2,7 @@
 
 Grouped interactive selection in Bash. `pick_select` provides ordinary
 multi-selection; `pick_run` adds dependency-aware selection. Both use the
-same terminal UI. Requires Bash 3.2+ and system `tput`. Exercised on macOS;
+same terminal UI. Requires Bash 3.2+ and system `tput`/`stty`. Exercised on macOS;
 other platforms are not yet verified.
 
 ## Multi-select
@@ -96,18 +96,52 @@ color capability produces plain text. Unknown names produce an input error.
 
 ## Keys
 
-| Key | `pick_select` | `pick_run` |
-|---|---|---|
-| Arrows / j / k | Move | Move |
-| Space | Toggle | Toggle with cascading deselection, or refuse a locked row in lock mode |
-| a | Select all included rows | Select all included rows if closure succeeds |
-| n | Clear all | Clear direct choices; retain automatic choices |
-| Enter | Submit, including empty | Submit a nonempty selection |
-| q / Esc | Cancel | Cancel |
+Both interactive APIs read these arrays at the start of each call.
+Defaults are initialized when the library is sourced:
 
-Esc waits up to one second for a possible arrow sequence. The terminal and
-caller INT/TERM handlers are restored on exit. Long rows are clipped to
-terminal width.
+```bash
+PICK_KEYS_UP=(Up k)
+PICK_KEYS_DOWN=(Down j)
+PICK_KEYS_TOGGLE=(Space)
+PICK_KEYS_ALL=(a)
+PICK_KEYS_CLEAR=(n)
+PICK_KEYS_SUBMIT=(Enter)
+PICK_KEYS_CANCEL=(q Q Esc)
+```
+
+Assign an array after sourcing to replace that action's bindings. Multiple
+elements are aliases; matching is case-sensitive. For example:
+
+```bash
+PICK_KEYS_UP=(Up w)
+PICK_KEYS_DOWN=(Down s)
+PICK_KEYS_TOGGLE=(Space x)
+PICK_KEYS_SUBMIT=(Enter f)
+```
+
+A token is one printable ASCII character or one of `Up`, `Down`, `Left`,
+`Right`, `Space`, `Enter`, `Esc`, `Tab`, `Backspace`. A literal space
+normalizes to `Space`. Arrow tokens recognize unmodified CSI and SS3 terminal sequences.
+Empty arrays disable an action. Unmapped keys have no effect. Each key
+belongs to one action; repeated aliases within that action are deduplicated.
+Unknown tokens or conflicting actions fail before opening the UI:
+`pick_select` returns `2`, `pick_run` returns `1`.
+
+The help lines show the active bindings. The actions have these semantics:
+
+| Action | `pick_select` | `pick_run` |
+|---|---|---|
+| Up / down | Move | Move |
+| Toggle | Toggle | Toggle with cascading deselection, or refuse a locked row in lock mode |
+| All | Select all included rows | Select all included rows if closure succeeds |
+| Clear | Clear all | Clear direct choices; retain automatic choices |
+| Submit | Submit, including empty | Submit a nonempty selection |
+| Cancel | Cancel | Cancel |
+
+Esc waits up to one second to distinguish it from an escape sequence.
+Ctrl-C remains a terminal signal handled through the caller's INT handler.
+The terminal and caller INT/TERM handlers are restored on exit. Long rows
+are clipped to terminal width.
 
 ## Helpers
 
@@ -125,6 +159,8 @@ terminal width.
 ```bash
 /bin/bash examples/checkbox.sh
 /bin/bash examples/dependencies.sh
+/bin/bash examples/dependencies.sh lock
+/bin/bash examples/wizard.sh
 NO_COLOR=1 /bin/bash examples/checkbox.sh
 ```
 
@@ -132,6 +168,18 @@ The examples display the prompt and print its result. The first shows initial
 selection, repeated labels with distinct IDs, and colors. The second shows
 transitive automatic selection and cascading deselection; pass `lock` to
 compare the locking behavior.
+
+`examples/wizard.sh` calls `pick_select` for two steps and displays a third
+review step. After submitting each prompt with Enter, use `n`/Enter for
+Next, `b` for Back, or `e` to edit that step, followed by Enter. Previously
+submitted selections are restored when revisiting a step. At review, use
+`b` to revisit the second step or `f` to finish. `q` cancels the wizard.
+The script keeps its own answers and navigation state and only prints a
+result; it adds no wizard API to the library.
+
+`examples/keybindings.sh` uses w/s or arrows to move, x/Space to toggle,
+uppercase A/C to select/clear all, f/Enter to submit, and z/Esc to cancel.
+The replaced j/k, a/n and q/Q bindings are inactive in this example.
 
 ## License
 
