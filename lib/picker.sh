@@ -1,50 +1,42 @@
-# bash-prompts: grouped dependency-aware checkbox selector for Bash 3.2.
+# bash-prompts: grouped selection for Bash 3.2.
 #
 # SPDX-License-Identifier: MIT
 #
-# Public API (all other pick_* / PICK_* names are internal):
+# Public API (other pick_* / PICK_* names are internal):
+# Input arrays are parallel, dense, zero-based.
+#   PICK_ID[i]      unique identity; if unset, uses PICK_LABEL[i].
+#   PICK_LABEL[i]   display text.
+#   PICK_GROUP[i]   group text (unset means an unnamed group).
+#   PICK_VALID[i]   1 includes a row, 0 excludes it; unset means 1.
+#   PICK_STATE[i]   0/1 selected state: input/output for pick_select.
+# Dependency API additionally uses:
+#   PICK_DEPS[i]    comma-separated IDs of earlier rows; tokens are trimmed.
+#   PICK_DIRECT[i]  explicit choices.
+#   PICK_AUTO[i]    retained automatic choices.
+#   IDs referenced by PICK_DEPS must be nonempty, comma-free, and have no
+#   leading/trailing spaces or tabs. Display labels have no such token rule.
 #
-#   Input arrays (caller fills, parallel, dense, zero-based):
-#     PICK_LABEL[i]  display name; labels must be unique.
-#     PICK_GROUP[i]  group label shown on every row and header; caller-defined.
-#     PICK_DEPS[i]   comma-separated dependency labels (may be empty).
-#     PICK_VALID[i]  1 to include, 0 to exclude (unset counts as included).
+# pick_select: grouped multi-select, retaining incoming PICK_STATE.
+#   Empty submission is valid. Returns 0 submitted, 1 cancelled, 2 on
+#   invalid input or no interactive terminal. Read results only on 0.
+# pick_run: dependency-aware selection, starting with nothing checked.
+#   Live closure, locks, retained auto choices, and nonempty submission.
+#   Returns 0 submitted, 1 on cancellation or failure (0.1 compatibility).
+# pick_close: noninteractive dependency closure from DIRECT + retained AUTO.
+#   Returns 0 or 1; failed closure leaves selection state unchanged.
+# pick_find_id / pick_find_label <value>: print index or -1.
+# pick_locked_by <index>: print labels of selected immediate dependents.
+# pick_split_csv <text>: fills PICK_SPLIT, trimming tokens and preserving
+#   empty tokens, including a trailing one; empty input means no tokens.
 #
-#   State arrays (library owns during pick_close / pick_run):
-#     PICK_DIRECT[i] explicitly chosen rows.
-#     PICK_STATE[i]  selected rows: direct plus required dependencies.
-#     PICK_AUTO[i]   auto-added rows retained until explicitly unchecked.
-#
-#   Entry points:
-#     pick_close      resolve and expand PICK_DIRECT into PICK_STATE.
-#                     Two-phase: validates the whole graph first, so a
-#                     failure leaves PICK_STATE untouched. Recomputes the
-#                     selection strictly from PICK_DIRECT plus retained
-#                     PICK_AUTO rows. Prints "pick: ..." to stderr and
-#                     returns 1 on structural errors (duplicate label,
-#                     unknown or unavailable dependency, empty dependency
-#                     entry, dependency ordered at or after its dependent).
-#     pick_run        interactive checkbox UI; starts with nothing checked.
-#                     Validates the graph through pick_close before touching
-#                     the terminal. Returns 0 with PICK_DIRECT/PICK_STATE/
-#                     PICK_AUTO set, 1 when cancelled or invalid. The caller
-#                     confirms the printed plan before acting on the result.
-#     pick_locked_by <idx>
-#                     print comma-separated labels of selected rows that
-#                     require row <idx> (empty output when none).
-#     pick_find_label <label>
-#                     print the row index, or -1 when absent.
-#     pick_split_csv <csv>
-#                     split into PICK_SPLIT, trimmed; empty entries kept.
-#
-#   PICK_VERSION holds the library version.
-#
-# The picker draws from these arrays only and never probes the outside
-# world, so drawing costs nothing beyond terminal output. Bash 3.2 safe:
-# indexed arrays only, no associative arrays, no mapfile, no =~, no nameref
-# (callers pass data through the fixed PICK_* names above).
-PICK_VERSION="0.1.0"
+# Optional colors: PICK_FOCUS_COLOR, PICK_SELECTED_COLOR, PICK_GROUP_COLOR.
+#   Empty/default means terminal default. Names: black, red, green, yellow,
+#   blue, magenta, cyan, white. Focus takes precedence over selected color.
+#   Nonempty NO_COLOR, TERM=dumb, or missing color capability gives plain text.
+# The API uses one active PICK_* state in the calling Bash process.
+PICK_VERSION="0.2.0"
 
+PICK_ID=()
 PICK_LABEL=()
 PICK_GROUP=()
 PICK_DEPS=()
@@ -69,7 +61,13 @@ PICK_PREV_COUNT=0
 PICK_PREV_ROWS=
 PICK_PREV_COLS=
 PICK_FRAME=()
+PICK_FRAME_STYLE=()
 PICK_ROW=
+PICK_ROW_STYLE=
+PICK_STYLE_FOCUS=
+PICK_STYLE_SELECTED=
+PICK_STYLE_GROUP=
+PICK_STYLE_RESET=
 PICK_SAVED_INT=
 PICK_SAVED_TERM=
 PICK_TRAPS_ARMED=0
@@ -101,14 +99,38 @@ pick_trim() {
 }
 
 pick_split_csv() {
-    # $1 = comma-separated value; sets PICK_SPLIT, trimmed per entry.
     PICK_SPLIT=()
-    local csv=$1 i part
+    local csv=$1 part
     [[ -n $csv ]] || return 0
-    IFS=',' read -r -a PICK_SPLIT <<< "$csv"
-    for ((i=0; i<${#PICK_SPLIT[@]}; i++)); do
-        part=$(pick_trim "${PICK_SPLIT[i]}")
-        PICK_SPLIT[i]=$part
+    while [[ $csv == *,* ]]; do
+        part=${csv%%,*}
+        PICK_SPLIT[${#PICK_SPLIT[@]}]=$(pick_trim "$part")
+        csv=${csv#*,}
+    done
+    PICK_SPLIT[${#PICK_SPLIT[@]}]=$(pick_trim "$csv")
+}
+
+pick_find_id() {
+    local want=$1 i
+    for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+        if [[ ${PICK_ID[i]-${PICK_LABEL[i]}} == "$want" ]]; then
+            printf '%s' "$i"
+            return 0
+        fi
+    done
+    printf '%s' "-1"
+}
+
+pick_validate_items() {
+    local i j id
+    for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+        id=${PICK_ID[i]-${PICK_LABEL[i]}}
+        for ((j=0; j<i; j++)); do
+            if [[ ${PICK_ID[j]-${PICK_LABEL[j]}} == "$id" ]]; then
+                pick_err "duplicate ID '$id'"
+                return 1
+            fi
+        done
     done
 }
 
@@ -147,33 +169,25 @@ pick_restore_snap() {
 }
 
 pick_close() {
-    # Expand PICK_DIRECT into PICK_STATE through the dependency closure.
-    # Retained PICK_AUTO rows stay selected. The closure is atomic: the
-    # entry triples are snapshotted first, and any failure restores the
-    # snapshot instead of returning a successful incomplete plan.
-    local n i k dep j a b
+    # Atomic closure of explicit and retained automatic choices.
+    local n i k dep j b
     n=${#PICK_LABEL[@]}
+    pick_validate_items || return 1
     pick_snapshot
     for ((i=0; i<n; i++)); do
         [[ ${PICK_VALID[i]:-1} == 0 ]] && continue
-        for ((a=0; a<i; a++)); do
-            [[ ${PICK_LABEL[a]} == "${PICK_LABEL[i]}" ]] || continue
-            pick_err "duplicate label '${PICK_LABEL[i]}'"
-            return 1
-        done
         pick_split_csv "${PICK_DEPS[i]:-}"
         for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
             dep=${PICK_SPLIT[k]}
             [[ -n $dep ]] || { pick_err "'${PICK_LABEL[i]}' has an empty dependency entry"; return 1; }
-            j=$(pick_find_label "$dep")
+            j=$(pick_find_id "$dep")
             if [[ $j -lt 0 ]]; then
                 pick_err "'${PICK_LABEL[i]}' requires unknown '$dep'"
                 return 1
             fi
             if [[ ${PICK_VALID[j]:-1} == 0 ]]; then
-                # An excluded prerequisite can never be satisfied: selecting
-                # its dependent would publish a plan the executor cannot
-                # fulfill, so reject it here instead of silently dropping it.
+                # Excluded prerequisites cannot join the selected set;
+                # accepting their dependents would return an incomplete closure.
                 if [[ ${PICK_DIRECT[i]:-0} == 1 ]]; then
                     pick_err "'${PICK_LABEL[i]}' requires '$dep', which is not available"
                     return 1
@@ -211,7 +225,7 @@ pick_close() {
             for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
                 dep=${PICK_SPLIT[k]}
                 [[ -n $dep ]] || continue
-                j=$(pick_find_label "$dep")
+                j=$(pick_find_id "$dep")
                 [[ $j -ge 0 ]] || continue
                 [[ ${PICK_VALID[j]:-1} != 0 ]] || continue
                 if [[ ${PICK_STATE[j]:-0} != 1 ]]; then
@@ -231,7 +245,7 @@ pick_close() {
         for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
             dep=${PICK_SPLIT[k]}
             [[ -n $dep ]] || continue
-            j=$(pick_find_label "$dep")
+            j=$(pick_find_id "$dep")
             [[ $j -ge 0 ]] || continue
             if [[ ${PICK_VALID[j]:-1} == 0 ]]; then
                 pick_err "'${PICK_LABEL[i]}' requires '$dep', which is not available"
@@ -247,36 +261,19 @@ pick_close() {
 }
 
 pick_locked_by() {
-    # $1 = row index; print comma-separated labels of selected rows that
-    # require it (other than itself), or nothing.
-    local idx=$1 j k dep first=1 out=
-    local n
-    n=${#PICK_LABEL[@]}
-    for ((j=0; j<n; j++)); do
-        [[ $j != "$idx" && ${PICK_STATE[j]:-0} == 1 && ${PICK_VALID[j]:-1} != 0 ]] || continue
-        pick_split_csv "${PICK_DEPS[j]:-}"
-        for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
-            if [[ ${PICK_SPLIT[k]} == "${PICK_LABEL[idx]}" ]]; then
-                if ((first)); then out=${PICK_LABEL[j]}; first=0
-                else out="$out, ${PICK_LABEL[j]}"; fi
-                break
-            fi
-        done
-    done
-    printf '%s' "$out"
+    pick_dep_names_into "$1"
+    printf '%s' "$PICK_DEPNAMES"
 }
 
 pick_dep_names_into() {
-    # Internal: like pick_locked_by but sets PICK_DEPNAMES without a fork.
-    local idx=$1 j k dep first=1
-    local n
-    n=${#PICK_LABEL[@]}
+    local idx=$1 j k first=1 id
+    id=${PICK_ID[idx]-${PICK_LABEL[idx]}}
     PICK_DEPNAMES=
-    for ((j=0; j<n; j++)); do
+    for ((j=0; j<${#PICK_LABEL[@]}; j++)); do
         [[ $j != "$idx" && ${PICK_STATE[j]:-0} == 1 && ${PICK_VALID[j]:-1} != 0 ]] || continue
         pick_split_csv "${PICK_DEPS[j]:-}"
         for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
-            if [[ ${PICK_SPLIT[k]} == "${PICK_LABEL[idx]}" ]]; then
+            if [[ ${PICK_SPLIT[k]} == "$id" ]]; then
                 if ((first)); then PICK_DEPNAMES=${PICK_LABEL[j]}; first=0
                 else PICK_DEPNAMES="$PICK_DEPNAMES, ${PICK_LABEL[j]}"; fi
                 break
@@ -289,6 +286,7 @@ pick_recalc_locks() {
     local i n
     n=${#PICK_LABEL[@]}
     for ((i=0; i<n; i++)); do PICK_FLOCK[i]=; done
+    [[ ${PICK_MODE:-dependencies} == dependencies ]] || return 0
     for ((i=0; i<n; i++)); do
         [[ ${PICK_STATE[i]:-0} == 1 && ${PICK_VALID[i]:-1} != 0 ]] || continue
         pick_dep_names_into "$i"
@@ -305,7 +303,7 @@ pick_build_focus() {
     PICK_GROUPS=()
     for ((i=0; i<n; i++)); do
         [[ ${PICK_VALID[i]:-1} == 0 ]] && continue
-        g=${PICK_GROUP[i]}
+        g=${PICK_GROUP[i]-}
         seen=0
         for ((f=0; f<${#PICK_GROUPS[@]}; f++)); do
             [[ ${PICK_GROUPS[f]} == "$g" ]] && { seen=1; break; }
@@ -316,7 +314,7 @@ pick_build_focus() {
     for ((gi=0; gi<${#PICK_GROUPS[@]}; gi++)); do
         for ((i=0; i<n; i++)); do
             [[ ${PICK_VALID[i]:-1} == 0 ]] && continue
-            [[ ${PICK_GROUP[i]} == "${PICK_GROUPS[gi]}" ]] || continue
+            [[ ${PICK_GROUP[i]-} == "${PICK_GROUPS[gi]}" ]] || continue
             PICK_FOCUS[${#PICK_FOCUS[@]}]=$i
         done
     done
@@ -325,7 +323,7 @@ pick_build_focus() {
     for ((k=0; k<${#PICK_FOCUS[@]}; k++)); do
         if ((k == 0)); then drow=1
         else
-            if [[ ${PICK_GROUP[${PICK_FOCUS[k]}]} != "${PICK_GROUP[${PICK_FOCUS[k-1]}]}" ]]; then
+            if [[ ${PICK_GROUP[${PICK_FOCUS[k]}]-} != "${PICK_GROUP[${PICK_FOCUS[k-1]}]-}" ]]; then
                 drow=$((drow + 2))
             else
                 drow=$((drow + 1))
@@ -343,7 +341,7 @@ pick_group_counts() {
     PICK_GSEL=0
     for ((i=0; i<n; i++)); do
         [[ ${PICK_VALID[i]:-1} == 0 ]] && continue
-        [[ ${PICK_GROUP[i]} == "$g" ]] || continue
+        [[ ${PICK_GROUP[i]-} == "$g" ]] || continue
         PICK_GTOT=$((PICK_GTOT + 1))
         [[ ${PICK_STATE[i]:-0} == 1 ]] && PICK_GSEL=$((PICK_GSEL + 1))
     done
@@ -386,6 +384,7 @@ pick_on_term() {
 
 pick_setup_term() {
     [[ -t 0 && -t 1 ]] || return 1
+    pick_prepare_colors || return 1
     # Capability checks stay silent; the sequences below go to the terminal.
     if tput clear >/dev/null 2>&1; then PICK_CLEAR=1; else PICK_CLEAR=0; fi
     if tput smcup >/dev/null 2>&1; then PICK_SMCUP=1; else PICK_SMCUP=0; fi
@@ -404,6 +403,8 @@ pick_cleanup_term() {
     if ((PICK_CIVIS)); then tput cnorm || true; fi
     PICK_SMCUP=0
     PICK_CIVIS=0
+    if [[ -n $PICK_STYLE_RESET ]]; then printf '%s' "$PICK_STYLE_RESET"; fi
+    PICK_STYLE_RESET=
 }
 
 pick_clear_screen() {
@@ -424,7 +425,7 @@ pick_title() {
         [[ -n $out ]] && out="$out  "
         out="$out$g [$PICK_GSEL/$PICK_GTOT]"
     done
-    printf 'Select items (space toggles; locked rows show why)  %s\n' "$out"
+    printf 'Select items  %s\n' "$out"
 }
 
 pick_render() {
@@ -443,16 +444,21 @@ pick_render() {
     ((drow < PICK_OFFSET)) && PICK_OFFSET=$drow
     ((drow >= PICK_OFFSET + h)) && PICK_OFFSET=$((drow - h + 1))
     PICK_FRAME=()
+    PICK_FRAME_STYLE=()
     local title
     title=$(pick_title)
     PICK_FRAME[${#PICK_FRAME[@]}]="$title"
     for ((d=PICK_OFFSET; d<PICK_OFFSET+h; d++)); do
         pick_render_row "$d"
+        PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_ROW_STYLE
         PICK_FRAME[${#PICK_FRAME[@]}]="$PICK_ROW"
     done
-    PICK_FRAME[${#PICK_FRAME[@]}]="up/down j/k move - space toggle - a check all - n clear directs - enter done - q cancel"
+    local clear_hint="clear all"
+    [[ $PICK_MODE == dependencies ]] && clear_hint="clear directs"
+    PICK_FRAME[${#PICK_FRAME[@]}]="arrows/j/k move | space toggle | a all | n $clear_hint"
+    PICK_FRAME[${#PICK_FRAME[@]}]="enter submit | q/esc cancel"
     if [[ -n $PICK_MSG ]]; then PICK_FRAME[${#PICK_FRAME[@]}]="$PICK_MSG"
-    else PICK_FRAME[${#PICK_FRAME[@]}]="Enter shows the checked plan for confirmation; nothing is installed by selecting."; fi
+    else PICK_FRAME[${#PICK_FRAME[@]}]="Enter returns the checked selection."; fi
     if [[ $rows != "$PICK_PREV_ROWS" || $cols != "$PICK_PREV_COLS" ]]; then
         # A handler may have run during the tput probes above; the refusal
         # lives in pick_clear_screen itself so this clear cannot be missed.
@@ -479,13 +485,15 @@ pick_emit_frame() {
     # bounded residue is inherent to async signals. No second write
     # follows a refusal, because every refusal breaks the main loop.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-    local cols=$1 i line n r out
+    local cols=$1 i line n r out style
     n=${#PICK_FRAME[@]}
     if [[ -n $PICK_CUP && -n $PICK_EL ]]; then
         out=$PICK_CUP
         for ((i=0; i<n; i++)); do
             line=${PICK_FRAME[i]}
             if ((${#line} > cols)); then line=${line:0:$cols}; fi
+            style=${PICK_FRAME_STYLE[i]-}
+            if [[ -n $style ]]; then line="$style$line$PICK_STYLE_RESET"; fi
             out+="$line$PICK_EL"
             if ((i < n-1)); then out+=$'\n'; fi
         done
@@ -503,6 +511,8 @@ pick_emit_frame() {
         for ((i=0; i<n; i++)); do
             line=${PICK_FRAME[i]}
             if ((${#line} > cols)); then line=${line:0:$cols}; fi
+            style=${PICK_FRAME_STYLE[i]-}
+            if [[ -n $style ]]; then line="$style$line$PICK_STYLE_RESET"; fi
             out+="$line"$'\n'
         done
         [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
@@ -518,16 +528,18 @@ pick_render_row() {
     # out.
     local d=$1
     local gi k idx g base
+    PICK_ROW_STYLE=
     base=0
     for ((gi=0; gi<${#PICK_GROUPS[@]}; gi++)); do
         g=${PICK_GROUPS[gi]}
         if ((d == base)); then
             PICK_ROW="-- $g --"
+            PICK_ROW_STYLE=$PICK_STYLE_GROUP
             return 0
         fi
         k=0
         for ((k=0; k<${#PICK_FOCUS[@]}; k++)); do
-            [[ ${PICK_GROUP[${PICK_FOCUS[k]}]} == "$g" ]] || continue
+            [[ ${PICK_GROUP[${PICK_FOCUS[k]}]-} == "$g" ]] || continue
             base=$((base + 1))
             if ((d == base)); then
                 pick_item_line "${PICK_FOCUS[k]}" "$k"
@@ -540,25 +552,62 @@ pick_render_row() {
 }
 
 pick_item_line() {
-    # $1 = row index, $2 = focus position. Sets PICK_ROW.
-    # NOTE: name is assigned separately because an array subscript in the
-    # same local command would not see the just-assigned idx.
-    local idx=$1 pos=$2 mark="[ ]" suffix= kind= name=
+    local idx=$1 pos=$2 mark="[ ]" suffix= kind= name= reqs= k j
     name=${PICK_LABEL[idx]}
+    PICK_ROW_STYLE=
     if [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
         mark="[x]"
-        if [[ ${PICK_DIRECT[idx]:-0} == 1 ]]; then kind=direct; else kind="auto"; fi
-        suffix="($kind"
-        [[ -n ${PICK_DEPS[idx]:-} ]] && suffix="$suffix; requires: ${PICK_DEPS[idx]}"
-        [[ -n ${PICK_FLOCK[idx]:-} ]] && suffix="$suffix; locked: ${PICK_FLOCK[idx]}"
-        suffix="$suffix)"
-    else
-        if [[ -n ${PICK_DEPS[idx]:-} ]]; then suffix="(requires: ${PICK_DEPS[idx]})"; else suffix=; fi
+        PICK_ROW_STYLE=$PICK_STYLE_SELECTED
     fi
-    local group_tag="[${PICK_GROUP[idx]}]"
-    if ((pos == PICK_CURSOR)); then mark=">$mark"; else mark=" $mark"; fi
+    if [[ $PICK_MODE == dependencies ]]; then
+        pick_split_csv "${PICK_DEPS[idx]-}"
+        for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
+            j=$(pick_find_id "${PICK_SPLIT[k]}")
+            [[ $j -ge 0 ]] || continue
+            [[ -z $reqs ]] || reqs="$reqs, "
+            reqs="$reqs${PICK_LABEL[j]}"
+        done
+        if [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
+            if [[ ${PICK_DIRECT[idx]:-0} == 1 ]]; then kind=direct; else kind=auto; fi
+            suffix="($kind"
+            [[ -n $reqs ]] && suffix="$suffix; requires: $reqs"
+            [[ -n ${PICK_FLOCK[idx]:-} ]] && suffix="$suffix; locked: ${PICK_FLOCK[idx]}"
+            suffix="$suffix)"
+        elif [[ -n $reqs ]]; then
+            suffix="(requires: $reqs)"
+        fi
+    fi
+    local group_tag="[${PICK_GROUP[idx]-}]"
+    if ((pos == PICK_CURSOR)); then
+        mark=">$mark"
+        PICK_ROW_STYLE=$PICK_STYLE_FOCUS
+    else mark=" $mark"; fi
     if [[ -n $suffix ]]; then PICK_ROW="$mark $group_tag $name $suffix"
     else PICK_ROW="$mark $group_tag $name"; fi
+}
+
+pick_action() {
+    local action=$1 i idx
+    if [[ $PICK_MODE == dependencies ]]; then
+        case $action in
+            toggle) pick_toggle ;; all) pick_check_all ;; clear) pick_clear_directs ;;
+        esac
+        return
+    fi
+    PICK_MSG=
+    case $action in
+        toggle)
+            idx=${PICK_FOCUS[PICK_CURSOR]}
+            PICK_STATE[idx]=$((1 - ${PICK_STATE[idx]:-0}))
+            ;;
+        all|clear)
+            for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+                if [[ $action == all && ${PICK_VALID[i]:-1} != 0 ]]; then PICK_STATE[i]=1
+                else PICK_STATE[i]=0; fi
+            done
+            ;;
+    esac
+    return 0
 }
 
 pick_toggle() {
@@ -669,19 +718,18 @@ pick_sel_count() {
 }
 
 pick_run() {
-    # Starts with no direct selections; returns 0 with PICK_DIRECT,
-    # PICK_STATE and PICK_AUTO set, or 1 when cancelled. The caller
-    # confirms the printed plan before acting on the result.
-    local i key seq rc=1 start
-    local n
-    n=${#PICK_LABEL[@]}
-    for ((i=0; i<n; i++)); do PICK_DIRECT[i]=0; PICK_STATE[i]=0; PICK_AUTO[i]=0; done
-    pick_build_focus
-    ((${#PICK_FOCUS[@]})) || { pick_err "no selectable items"; return 1; }
-    # Validate through the same closure contract as noninteractive
-    # selection before accepting any plan; an invalid graph fails here,
-    # before the terminal is touched.
+    local PICK_MODE=dependencies i
+    for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+        PICK_DIRECT[i]=0; PICK_STATE[i]=0; PICK_AUTO[i]=0
+    done
     pick_close || return 1
+    if pick_interact; then return 0; else return 1; fi
+}
+
+pick_interact() {
+    local key seq rc=1 start
+    pick_build_focus
+    ((${#PICK_FOCUS[@]})) || { pick_err "no selectable items"; return 2; }
     PICK_CURSOR=0
     PICK_OFFSET=0
     PICK_MSG=
@@ -689,7 +737,7 @@ pick_run() {
     PICK_PREV_COUNT=0
     PICK_PREV_ROWS=
     PICK_PREV_COLS=
-    pick_setup_term || { pick_err "interactive selection needs a terminal; use pick_close for explicit selection"; return 1; }
+    pick_setup_term || { pick_err "interactive selection needs a terminal and valid options"; return 2; }
     pick_traps_save
     trap 'pick_on_int' INT
     trap 'pick_on_term' TERM
@@ -729,15 +777,15 @@ pick_run() {
             esac
         else
             case $key in
-                ' ') pick_toggle ;;
+                ' ') pick_action toggle ;;
                 j) PICK_MSG=; ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)) && PICK_CURSOR=$((PICK_CURSOR+1)) ;;
                 k) PICK_MSG=; ((PICK_CURSOR > 0)) && PICK_CURSOR=$((PICK_CURSOR-1)) ;;
-                a) pick_check_all ;;
-                n) pick_clear_directs ;;
+                a) pick_action all ;;
+                n) pick_action clear ;;
                 q|Q) rc=1; break ;;
                 ''|$'\n'|$'\r')
                     if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
-                    if [[ $(pick_sel_count) == 0 ]]; then PICK_MSG="Nothing selected."
+                    if [[ $PICK_MODE == dependencies && $(pick_sel_count) == 0 ]]; then PICK_MSG="Nothing selected."
                     else rc=0; break; fi ;;
                 *) ;;
             esac
@@ -750,4 +798,43 @@ pick_run() {
     # pending-signal check decides the outcome after restoration.
     if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; fi
     return "$rc"
+}
+
+pick_color_number() {
+    case $1 in
+        ''|default) printf '%s' -1 ;;
+        black) printf 0 ;; red) printf 1 ;; green) printf 2 ;;
+        yellow) printf 3 ;; blue) printf 4 ;; magenta) printf 5 ;;
+        cyan) printf 6 ;; white) printf 7 ;;
+        *) pick_err "unknown color '$1'"; return 1 ;;
+    esac
+}
+
+pick_prepare_colors() {
+    local focus selected group colors
+    PICK_STYLE_FOCUS=; PICK_STYLE_SELECTED=; PICK_STYLE_GROUP=; PICK_STYLE_RESET=
+    focus=$(pick_color_number "${PICK_FOCUS_COLOR-}") || return 1
+    selected=$(pick_color_number "${PICK_SELECTED_COLOR-}") || return 1
+    group=$(pick_color_number "${PICK_GROUP_COLOR-}") || return 1
+    [[ -z ${NO_COLOR-} && ${TERM-} != dumb ]] || return 0
+    ((focus >= 0 || selected >= 0 || group >= 0)) || return 0
+    colors=$(tput colors 2>/dev/null) || return 0
+    case $colors in ''|*[!0-9]*) return 0 ;; esac
+    ((colors >= 8)) || return 0
+    PICK_STYLE_RESET=$(tput sgr0 2>/dev/null) || { PICK_STYLE_RESET=; return 0; }
+    [[ -n $PICK_STYLE_RESET ]] || return 0
+    if ((focus >= 0)); then PICK_STYLE_FOCUS=$(tput setaf "$focus" 2>/dev/null || true); fi
+    if ((selected >= 0)); then PICK_STYLE_SELECTED=$(tput setaf "$selected" 2>/dev/null || true); fi
+    if ((group >= 0)); then PICK_STYLE_GROUP=$(tput setaf "$group" 2>/dev/null || true); fi
+    return 0
+}
+
+pick_select() {
+    local PICK_MODE=select i
+    pick_validate_items || return 2
+    for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+        if [[ ${PICK_VALID[i]:-1} != 0 && ${PICK_STATE[i]:-0} == 1 ]]; then PICK_STATE[i]=1
+        else PICK_STATE[i]=0; fi
+    done
+    pick_interact
 }
