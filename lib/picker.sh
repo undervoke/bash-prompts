@@ -814,8 +814,8 @@ pick_interact() {
     if ! pick_setup_term; then
         pick_cleanup_term
         pick_traps_restore
-        pick_err "interactive selection needs a terminal and valid options"
         [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+        pick_err "interactive selection needs a terminal and valid options"
         return 2
     fi
     pick_recalc_locks

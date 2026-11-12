@@ -1,0 +1,80 @@
+#!/bin/bash
+# Repository example launcher; each example owns its interaction and result.
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
+
+names=(checkbox dependencies lock keybindings wizard)
+descriptions=(
+    'Multi-select, initial choices, and colors'
+    'Automatic prerequisites and cascading deselection'
+    'Dependency selection with locked prerequisites'
+    'Custom keys: w/s, x, A/C, f, z'
+    'Three steps with Back, Next, and saved answers'
+)
+
+list_examples() {
+    local i
+    for ((i=0; i<${#names[@]}; i++)); do
+        printf '  %s. %-14s %s\n' "$((i + 1))" "${names[i]}" "${descriptions[i]}"
+    done
+}
+
+usage() {
+    printf 'Usage: %s [checkbox|dependencies|lock|keybindings|wizard|--list]\n' "$0"
+}
+
+run_example() {
+    case $1 in
+        lock) /bin/bash "$ROOT/examples/dependencies.sh" lock ;;
+        checkbox|dependencies|keybindings|wizard)
+            /bin/bash "$ROOT/examples/$1.sh"
+            ;;
+        *) printf 'Unknown example: %s\n' "$1" >&2; usage >&2; return 2 ;;
+    esac
+}
+
+if (($#)); then
+    if (($# != 1)); then usage >&2; exit 2; fi
+    case $1 in
+        --list) list_examples; exit 0 ;;
+        --help|-h) usage; list_examples; exit 0 ;;
+        *) run_example "$1"; exit $? ;;
+    esac
+fi
+
+if [[ ! -t 0 || ! -t 1 ]]; then
+    list_examples
+    printf 'The menu needs a terminal. Use --list or specify an example name.\n' >&2
+    exit 2
+fi
+
+source "$ROOT/lib/picker.sh" || exit 2
+PICK_ID=("${names[@]}")
+PICK_LABEL=()
+PICK_GROUP=()
+for ((i=0; i<${#names[@]}; i++)); do
+    PICK_LABEL[i]="${names[i]}: ${descriptions[i]}"
+    PICK_GROUP[i]=Examples
+done
+PICK_FOCUS_COLOR=cyan
+PICK_SELECTED_COLOR=green
+PICK_GROUP_COLOR=blue
+
+while true; do
+    PICK_STATE=()
+    if pick_select; then
+        :
+    else
+        rc=$?
+        if ((rc == 1)); then exit 0; fi
+        exit "$rc"
+    fi
+    for ((i=0; i<${#PICK_ID[@]}; i++)); do
+        [[ ${PICK_STATE[i]:-0} == 1 ]] || continue
+        run_example "${PICK_ID[i]}"
+        rc=$?
+        if ((rc != 0)); then
+            if ((rc > 1)); then printf 'Example ended with status %s.\n' "$rc" >&2; fi
+            break
+        fi
+    done
+done

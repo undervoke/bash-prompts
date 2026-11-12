@@ -156,14 +156,24 @@ are clipped to terminal width.
 
 ## Interactive examples
 
+Run `./demo` from the repository root. The launcher uses `pick_select`:
+check one or more examples with Space, then press Enter to run them in list
+order. Completing the batch or cancelling an example returns to a fresh
+picker. Press `q` or Esc in that picker to exit the launcher.
+Use a name to run an example directly and return its exit status:
+
 ```bash
-/bin/bash examples/checkbox.sh
-/bin/bash examples/dependencies.sh
-/bin/bash examples/dependencies.sh lock
-/bin/bash examples/wizard.sh
-NO_COLOR=1 /bin/bash examples/checkbox.sh
+./demo
+./demo --list
+./demo checkbox
+./demo dependencies
+./demo lock
+./demo keybindings
+./demo wizard
+NO_COLOR=1 ./demo checkbox
 ```
 
+Sources are in `examples/`; each script can also be run directly with Bash.
 The examples display the prompt and print its result. The first shows initial
 selection, repeated labels with distinct IDs, and colors. The second shows
 transitive automatic selection and cascading deselection; pass `lock` to
