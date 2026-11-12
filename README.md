@@ -24,13 +24,13 @@ versions; other platforms are not claimed.
 - [x] Preserve Bash 3.2 compatibility and rely only on Bash plus system
       terminal utilities, so rendering the selector needs no extra language
       runtime.
-- [ ] Integrate into consumers by pinned vendoring: each consumer ships a
-      version-pinned copy with MIT license and exact upstream provenance, so
-      an ordinary clone runs without fetching a UI dependency.
-- [ ] Verify on exercised environments only; do not advertise unverified
-      platform support.
-- [ ] Cut the first tagged release with usage documentation and MIT license
-      packaging.
+- [x] Integrate into consumers by pinned vendoring: each consumer ships a
+  version-pinned copy with MIT license and exact upstream provenance, so an
+  ordinary clone runs without fetching a UI dependency.
+- [x] Verify on exercised environments only; do not advertise unverified
+  platform support.
+- [x] Cut the first tagged release with usage documentation and MIT license
+  packaging.
 
 ## API
 
