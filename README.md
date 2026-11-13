@@ -63,6 +63,9 @@ Parallel, dense, zero-based arrays describe each row; `PICK_VALUE` is a scalar:
 | `PICK_ID` | Unique identity. An unset entry falls back to its label. |
 | `PICK_LABEL` | Display text; labels may repeat when IDs differ. |
 | `PICK_GROUP` | Group text. Unset means an unnamed group. |
+| `PICK_SUBGROUP` | Sub-group text inside the group. Unset means none. |
+| `PICK_SUBSUBGROUP` | Sub-sub-group text inside the sub-group. Unset means none. |
+| `PICK_GROUP_TAIL` | Names of groups rendered after the other groups of their parent. |
 | `PICK_VALID` | `0` excludes a row; `1` or unset includes it. |
 | `PICK_DISABLED` | Optional reason a visible checkbox is read-only; its initial state is retained. Applies to multi/dependency selection. |
 | `PICK_STATE` | Selected flags (`0`/`1`) for multi-selection, input and output. |
@@ -77,10 +80,16 @@ interactive terminal, or `3` when a Back key was pressed. Read results on `0`;
 on `3`, `PICK_VALUE` or `PICK_STATE` holds the unsubmitted state at that moment.
 
 Each named group gets a header; multi-selection headers show selected/total
-counts. The whole prompt fits the terminal height: the list takes the rows
-it needs, and on a short terminal the spacer, then hint lines, then the
-message, then the title give way to keep at least one list row. When a
-long list scrolls, the current group's header stays pinned at the top and the
+counts. A group can be split into named sub-groups, and a sub-group into named
+sub-sub-groups: each named level adds a header, and the items below it are
+indented one level per named header above them. A level without text adds no
+header and no indent, so rows can sit directly under their parent. Groups are
+ordered by first appearance, except that the groups named in
+`PICK_GROUP_TAIL` come last within their parent. The whole prompt fits the
+terminal height: the list takes the rows it needs, and on a short terminal the
+spacer, then hint lines, then the message, then the title give way to keep at
+least one list row. When a long list scrolls, the headers of the visible
+group, sub-group, and sub-sub-group stay pinned at the top and the
 title shows the focused position. A terminal resize repaints the prompt on a
 cleared screen.
 

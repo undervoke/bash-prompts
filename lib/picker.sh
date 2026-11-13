@@ -7,6 +7,12 @@
 #   PICK_ID[i]      unique identity; if unset, uses PICK_LABEL[i].
 #   PICK_LABEL[i]   display text.
 #   PICK_GROUP[i]   group text (unset means an unnamed group).
+#   PICK_SUBGROUP[i] sub-group text inside the group (unset means none).
+#   PICK_SUBSUBGROUP[i] sub-sub-group text inside the sub-group (unset means
+#     none). Each level with text gets its own header, and the items below
+#     it are indented one level per named header above them.
+#   PICK_GROUP_TAIL   names of groups rendered after the other groups of
+#     their parent; the rest keep their first-appearance order.
 #   PICK_VALID[i]   1 includes a row, 0 excludes it; unset means 1.
 #   PICK_DISABLED[i] optional reason a visible checkbox cannot change.
 #   PICK_STATE[i]   0/1 selected state: input/output for pick_multiselect.
@@ -66,11 +72,15 @@
 #   omits colors while supported bold title and dim hint remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
 # The API uses one active PICK_* state in the calling Bash process.
-PICK_VERSION="0.3.0"
+PICK_VERSION="0.4.0"
 
 PICK_ID=()
 PICK_LABEL=()
 PICK_GROUP=()
+PICK_SUBGROUP=()
+PICK_SUBSUBGROUP=()
+PICK_GROUP_TAIL=()
+PICK_CHILD=()
 PICK_DEPS=()
 PICK_VALID=()
 PICK_DISABLED=()
@@ -91,8 +101,12 @@ PICK_FOCUS_ROW=()
 PICK_DKIND=()
 PICK_DREF=()
 PICK_DGROUP=()
+PICK_DSUB=()
+PICK_DSUB2=()
 PICK_GROUP_ROW=()
 PICK_STICKY=-1
+PICK_STICKY_SUB=-1
+PICK_STICKY_SUB2=-1
 PICK_HINT=()
 PICK_TROWS=24
 PICK_TCOLS=80
@@ -169,6 +183,22 @@ pick_split_csv() {
         csv=${csv#*,}
     done
     PICK_SPLIT[${#PICK_SPLIT[@]}]=$(pick_trim "$csv")
+}
+
+# Separator-joined text: splits into fields, keeping empty ones.
+US_SEP=$'\x1f'
+# Separator-joined text: splits into fields, keeping empty ones.
+US_SEP=$'\x1f'
+pick_split_us() {
+    PICK_US=()
+    local s=$1 part
+    [[ -n $s ]] || return 0
+    while [[ $s == *"$US_SEP"* ]]; do
+        part=${s%%"$US_SEP"*}
+        PICK_US[${#PICK_US[@]}]=$part
+        s=${s#*"$US_SEP"}
+    done
+    PICK_US[${#PICK_US[@]}]=$s
 }
 
 pick_find_id() {
@@ -383,52 +413,132 @@ pick_recalc_locks() {
 }
 
 pick_build_focus() {
-    # Focus order: distinct groups in first-appearance order, catalog order
-    # inside each group. Display rows: a blank line between groups, a header
-    # for each named group, then its items.
-    local i g f seen n gi k d
+    # Display rows: every row has a path of up to three levels
+    # (PICK_GROUP, PICK_SUBGROUP, PICK_SUBSUBGROUP). Distinct paths keep the
+    # first-appearance order, and a level without text contributes no header
+    # and no indent. The focus order stays the input order.
+    local i l1 l2 l3 k gi si li seen n d
     n=${#PICK_LABEL[@]}
     PICK_FOCUS=()
-    PICK_GROUPS=()
+    PICK_L1=(); PICK_L1_ROW=()
+    PICK_L2=(); PICK_L2_ROW=(); PICK_L2_PARENT=()
+    PICK_L3=(); PICK_L3_ROW=(); PICK_L3_PARENT=()
+    PICK_RL1=(); PICK_RL2=(); PICK_RL3=()
     for ((i=0; i<n; i++)); do
         [[ ${PICK_VALID[i]:-1} == 0 ]] && continue
-        g=${PICK_GROUP[i]-}
+        l1=${PICK_GROUP[i]-}
+        l2=${PICK_SUBGROUP[i]-}
+        l3=${PICK_SUBSUBGROUP[i]-}
         seen=0
-        for ((f=0; f<${#PICK_GROUPS[@]}; f++)); do
-            [[ ${PICK_GROUPS[f]} == "$g" ]] && { seen=1; break; }
+        for ((gi=0; gi<${#PICK_L1[@]}; gi++)); do
+            [[ ${PICK_L1[gi]} == "$l1" ]] && { seen=1; break; }
         done
-        ((seen)) || PICK_GROUPS[${#PICK_GROUPS[@]}]=$g
+        if ((seen == 0)); then PICK_L1[gi]=$l1; fi
+        PICK_RL1[i]=$gi
+        seen=0
+        for ((si=0; si<${#PICK_L2[@]}; si++)); do
+            [[ ${PICK_L2_PARENT[si]} == "$gi" && ${PICK_L2[si]} == "$l2" ]] && { seen=1; break; }
+        done
+        if ((seen == 0)); then
+            PICK_L2[si]=$l2
+            PICK_L2_PARENT[si]=$gi
+        fi
+        PICK_RL2[i]=$si
+        seen=0
+        for ((li=0; li<${#PICK_L3[@]}; li++)); do
+            [[ ${PICK_L3_PARENT[li]} == "$si" && ${PICK_L3[li]} == "$l3" ]] && { seen=1; break; }
+        done
+        if ((seen == 0)); then
+            PICK_L3[li]=$l3
+            PICK_L3_PARENT[li]=$si
+        fi
+        PICK_RL3[i]=$li
     done
-    PICK_FOCUS_ROW=(); PICK_DKIND=(); PICK_DREF=(); PICK_DGROUP=(); PICK_GROUP_ROW=()
+    PICK_FOCUS_ROW=(); PICK_DKIND=(); PICK_DREF=(); PICK_DGROUP=(); PICK_DSUB=(); PICK_DSUB2=()
     d=0
-    for ((gi=0; gi<${#PICK_GROUPS[@]}; gi++)); do
+    for ((gi=0; gi<${#PICK_L1[@]}; gi++)); do
         if ((gi > 0)); then
-            PICK_DKIND[d]=blank; PICK_DREF[d]=; PICK_DGROUP[d]=$gi; d=$((d + 1))
+            PICK_DKIND[d]=blank; PICK_DREF[d]=; PICK_DGROUP[d]=$gi; PICK_DSUB[d]=; PICK_DSUB2[d]=; d=$((d + 1))
         fi
-        PICK_GROUP_ROW[gi]=$d
-        if [[ -n ${PICK_GROUPS[gi]} ]]; then
-            PICK_DKIND[d]=header; PICK_DREF[d]=$gi; PICK_DGROUP[d]=$gi; d=$((d + 1))
+        PICK_L1_ROW[gi]=$d
+        if [[ -n ${PICK_L1[gi]} ]]; then
+            PICK_DKIND[d]=header; PICK_DREF[d]=$gi; PICK_DGROUP[d]=$gi; PICK_DSUB[d]=; PICK_DSUB2[d]=; d=$((d + 1))
         fi
-        for ((i=0; i<n; i++)); do
-            [[ ${PICK_VALID[i]:-1} == 0 ]] && continue
-            [[ ${PICK_GROUP[i]-} == "${PICK_GROUPS[gi]}" ]] || continue
-            k=${#PICK_FOCUS[@]}
-            PICK_FOCUS[k]=$i
-            PICK_FOCUS_ROW[k]=$d
-            PICK_DKIND[d]=item; PICK_DREF[d]=$k; PICK_DGROUP[d]=$gi; d=$((d + 1))
+        # Tail-named groups come after the others of their parent.
+        local -a l2list
+        pick_child_order "$gi" 2
+        l2list=("${PICK_CHILD[@]}")
+        for ((ci=0; ci<${#l2list[@]}; ci++)); do
+            si=${l2list[ci]}
+            if [[ -n ${PICK_L2[si]} ]]; then
+                PICK_L2_ROW[si]=$d
+                PICK_DKIND[d]=subheader; PICK_DREF[d]=$si; PICK_DGROUP[d]=$gi; PICK_DSUB[d]=$si; PICK_DSUB2[d]=; d=$((d + 1))
+            fi
+            pick_child_order "$si" 3
+            for ((cj=0; cj<${#PICK_CHILD[@]}; cj++)); do
+                li=${PICK_CHILD[cj]}
+                if [[ -n ${PICK_L3[li]} ]]; then
+                    PICK_L3_ROW[li]=$d
+                    PICK_DKIND[d]=subsubheader; PICK_DREF[d]=$li; PICK_DGROUP[d]=$gi; PICK_DSUB[d]=$si; PICK_DSUB2[d]=$li; d=$((d + 1))
+                fi
+                for ((i=0; i<n; i++)); do
+                    [[ ${PICK_VALID[i]:-1} == 0 ]] && continue
+                    [[ ${PICK_RL1[i]} == "$gi" && ${PICK_RL2[i]} == "$si" && ${PICK_RL3[i]} == "$li" ]] || continue
+                    k=${#PICK_FOCUS[@]}
+                    PICK_FOCUS[k]=$i
+                    PICK_FOCUS_ROW[k]=$d
+                    PICK_DKIND[d]=item; PICK_DREF[d]=$k; PICK_DGROUP[d]=$gi; PICK_DSUB[d]=$si; PICK_DSUB2[d]=$li; d=$((d + 1))
+                done
+            done
         done
     done
 }
 
-pick_group_counts() {
-    # $1 = group; sets PICK_GTOT/PICK_GSEL over valid rows.
-    local g=$1 i n
+pick_group_is_tail() {
+    # $1 = group name; succeeds when the group is listed in PICK_GROUP_TAIL.
+    local name=$1 i
+    for ((i=0; i<${#PICK_GROUP_TAIL[@]}; i++)); do
+        [[ ${PICK_GROUP_TAIL[i]} == "$name" ]] && return 0
+    done
+    return 1
+}
+
+pick_child_order() {
+    # $1 = parent index; $2 = level (2|3); fills PICK_CHILD with the child
+    # group indices, tail-named groups last.
+    local parent=$1 level=$2 i
+    local -a tail
+    PICK_CHILD=()
+    tail=()
+    if [[ $level == 2 ]]; then
+        for ((i=0; i<${#PICK_L2[@]}; i++)); do
+            [[ ${PICK_L2_PARENT[i]} == "$parent" ]] || continue
+            if pick_group_is_tail "${PICK_L2[i]}"; then tail[${#tail[@]}]=$i
+            else PICK_CHILD[${#PICK_CHILD[@]}]=$i; fi
+        done
+    else
+        for ((i=0; i<${#PICK_L3[@]}; i++)); do
+            [[ ${PICK_L3_PARENT[i]} == "$parent" ]] || continue
+            if pick_group_is_tail "${PICK_L3[i]}"; then tail[${#tail[@]}]=$i
+            else PICK_CHILD[${#PICK_CHILD[@]}]=$i; fi
+        done
+    fi
+    for ((i=0; i<${#tail[@]}; i++)); do PICK_CHILD[${#PICK_CHILD[@]}]=${tail[i]}; done
+}
+
+pick_level_counts() {
+    # $1 = level (1|2|3); $2 = index; sets PICK_GTOT/PICK_GSEL.
+    local level=$1 idx=$2 i n
     n=${#PICK_LABEL[@]}
     PICK_GTOT=0
     PICK_GSEL=0
     for ((i=0; i<n; i++)); do
         [[ ${PICK_VALID[i]:-1} == 0 ]] && continue
-        [[ ${PICK_GROUP[i]-} == "$g" ]] || continue
+        case $level in
+            1) [[ ${PICK_RL1[i]} == "$idx" ]] || continue ;;
+            2) [[ ${PICK_RL2[i]} == "$idx" ]] || continue ;;
+            3) [[ ${PICK_RL3[i]} == "$idx" ]] || continue ;;
+        esac
         PICK_GTOT=$((PICK_GTOT + 1))
         [[ ${PICK_STATE[i]:-0} == 1 ]] && PICK_GSEL=$((PICK_GSEL + 1))
     done
@@ -570,13 +680,20 @@ pick_hint() {
 }
 
 pick_sticky() {
-    # A group header that scrolled above the window stays pinned at its top.
-    local top=$PICK_OFFSET g
+    # Pins the headers of the first visible row when they scrolled above the
+    # list: the group, then its sub-group, then its sub-sub-group.
+    local top=$PICK_OFFSET gi si li
     PICK_STICKY=-1
-    [[ ${PICK_DKIND[top]-} == item ]] || return 0
-    g=${PICK_DGROUP[top]}
-    [[ -n ${PICK_GROUPS[g]} ]] || return 0
-    ((PICK_GROUP_ROW[g] < top)) && PICK_STICKY=$g
+    PICK_STICKY_SUB=-1
+    PICK_STICKY_SUB2=-1
+    [[ ${PICK_DKIND[top]-} == blank ]] && return 0
+    gi=${PICK_DGROUP[top]-}
+    si=${PICK_DSUB[top]-}
+    li=${PICK_DSUB2[top]-}
+    [[ -n $gi ]] || return 0
+    if [[ -n ${PICK_L1[gi]} ]] && ((PICK_L1_ROW[gi] < top)); then PICK_STICKY=$gi; fi
+    if [[ -n $si && -n ${PICK_L2[si]} ]] && ((PICK_L2_ROW[si] < top)); then PICK_STICKY_SUB=$si; fi
+    if [[ -n $li && -n ${PICK_L3[li]} ]] && ((PICK_L3_ROW[li] < top)); then PICK_STICKY_SUB2=$li; fi
     return 0
 }
 
@@ -584,7 +701,7 @@ pick_render() {
     # A pending interrupt means the terminal is already restored; build
     # nothing so no further frame is composed for a dead screen.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-    local rows cols h d total drow start end title counter avail show_title show_msg hint_rows spacer
+    local rows cols h d total drow start end title counter avail show_title show_msg hint_rows spacer pinned tries
     pick_term_size
     rows=$PICK_TROWS
     cols=$PICK_TCOLS
@@ -612,13 +729,20 @@ pick_render() {
     ((PICK_OFFSET < 0)) && PICK_OFFSET=0
     PICK_STICKY=-1
     if ((h > 1)); then
-        pick_sticky
-        # A pinned header takes one list row; scroll once more if that
-        # would hide the focused row.
-        if ((PICK_STICKY >= 0 && drow >= PICK_OFFSET + h - 1)); then
-            PICK_OFFSET=$((PICK_OFFSET + 1))
+        # Pinned headers take one list row each; the focused row must stay
+        # visible below them.
+        tries=0
+        while ((tries < 3)); do
             pick_sticky
-        fi
+            pinned=0
+            ((PICK_STICKY >= 0)) && pinned=$((pinned + 1))
+            ((PICK_STICKY_SUB >= 0)) && pinned=$((pinned + 1))
+            ((PICK_STICKY_SUB2 >= 0)) && pinned=$((pinned + 1))
+            ((drow < PICK_OFFSET + h - pinned)) && break
+            PICK_OFFSET=$((drow - h + pinned + 1))
+            ((PICK_OFFSET < 0)) && PICK_OFFSET=0
+            tries=$((tries + 1))
+        done
     fi
     PICK_FRAME=()
     PICK_FRAME_STYLE=()
@@ -638,7 +762,19 @@ pick_render() {
     start=$PICK_OFFSET
     end=$((start + h))
     if ((PICK_STICKY >= 0)); then
-        pick_group_line "$PICK_STICKY"
+        pick_header_line 1 "$PICK_STICKY"
+        PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_ROW_STYLE
+        PICK_FRAME[${#PICK_FRAME[@]}]=$PICK_ROW
+        end=$((end - 1))
+    fi
+    if ((PICK_STICKY_SUB >= 0)); then
+        pick_header_line 2 "$PICK_STICKY_SUB"
+        PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_ROW_STYLE
+        PICK_FRAME[${#PICK_FRAME[@]}]=$PICK_ROW
+        end=$((end - 1))
+    fi
+    if ((PICK_STICKY_SUB2 >= 0)); then
+        pick_header_line 3 "$PICK_STICKY_SUB2"
         PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_ROW_STYLE
         PICK_FRAME[${#PICK_FRAME[@]}]=$PICK_ROW
         end=$((end - 1))
@@ -773,23 +909,43 @@ pick_render_row() {
     PICK_ROW=
     PICK_ROW_STYLE=
     case ${PICK_DKIND[d]-} in
-        header) pick_group_line "${PICK_DREF[d]}" ;;
+        header) pick_header_line 1 "${PICK_DREF[d]}" ;;
+        subheader) pick_header_line 2 "${PICK_DREF[d]}" ;;
+        subsubheader) pick_header_line 3 "${PICK_DREF[d]}" ;;
         item) pick_item_line "${PICK_FOCUS[${PICK_DREF[d]}]}" "${PICK_DREF[d]}" ;;
     esac
 }
 
-pick_group_line() {
-    local g=${PICK_GROUPS[$1]}
-    PICK_ROW=$g
+pick_header_line() {
+    # $1 = level (1|2|3); $2 = index; sets PICK_ROW and PICK_ROW_STYLE.
+    local level=$1 idx=$2 text= indent= p
+    case $level in
+        1) text=${PICK_L1[idx]} ;;
+        2)
+            text=${PICK_L2[idx]}
+            [[ -n ${PICK_L1[${PICK_L2_PARENT[idx]}]} ]] && indent='  '
+            ;;
+        3)
+            text=${PICK_L3[idx]}
+            p=${PICK_L3_PARENT[idx]}
+            [[ -n ${PICK_L1[${PICK_L2_PARENT[p]}]} ]] && indent='  '
+            [[ -n ${PICK_L2[p]} ]] && indent="$indent  "
+            ;;
+    esac
+    PICK_ROW="$indent$text"
     PICK_ROW_STYLE=$PICK_STYLE_GROUP
     [[ $PICK_MODE != single ]] || return 0
-    pick_group_counts "$g"
-    PICK_ROW="$g ($PICK_GSEL/$PICK_GTOT)"
+    pick_level_counts "$level" "$idx"
+    PICK_ROW="$indent$text ($PICK_GSEL/$PICK_GTOT)"
 }
 
 pick_item_line() {
-    local idx=$1 pos=$2 mark="[ ]" notes= reqs= k j
+    local idx=$1 pos=$2 mark="[ ]" notes= reqs= k j indent=
     PICK_ROW_STYLE=
+    # One indent level per named header above the row.
+    [[ -z ${PICK_GROUP[idx]-} ]] || indent='  '
+    [[ -z ${PICK_SUBGROUP[idx]-} ]] || indent="$indent  "
+    [[ -z ${PICK_SUBSUBGROUP[idx]-} ]] || indent="$indent  "
     if [[ $PICK_MODE == single ]]; then
         mark=
     elif [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
@@ -809,7 +965,7 @@ pick_item_line() {
         pick_split_csv "${PICK_DEPS[idx]-}"
         for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
             j=$(pick_find_id "${PICK_SPLIT[k]}")
-            [[ $j -ge 0 ]] || continue
+            [[ $j -lt 0 ]] && continue
             [[ -z $reqs ]] || reqs="$reqs, "
             reqs="$reqs${PICK_LABEL[j]}"
         done
@@ -819,9 +975,9 @@ pick_item_line() {
         notes="${notes:+$notes; }${PICK_DISABLED[idx]}"
     fi
     if ((pos == PICK_CURSOR)); then
-        PICK_ROW='> '
+        PICK_ROW="$indent> "
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
-    else PICK_ROW='  '; fi
+    else PICK_ROW="$indent  "; fi
     PICK_ROW="$PICK_ROW${mark:+$mark }${PICK_LABEL[idx]}${notes:+  ($notes)}"
 }
 
