@@ -4,6 +4,7 @@ Grouped interactive selection in Bash:
 
 - `pick_select`: one highlighted item, returned as an ID in `PICK_VALUE`.
 - `pick_multiselect`: checked items, returned as flags in `PICK_STATE`.
+- `pick_dependencies`: initialized checkboxes with live dependency selection.
 - `pick_run`: dependency-aware checked items.
 
 All use the same terminal UI. Requires Bash 3.2+ and system `tput`, `stty`,
@@ -63,6 +64,7 @@ Parallel, dense, zero-based arrays describe each row; `PICK_VALUE` is a scalar:
 | `PICK_LABEL` | Display text; labels may repeat when IDs differ. |
 | `PICK_GROUP` | Group text. Unset means an unnamed group. |
 | `PICK_VALID` | `0` excludes a row; `1` or unset includes it. |
+| `PICK_DISABLED` | Optional reason a visible checkbox is read-only; its initial state is retained. Applies to multi/dependency selection. |
 | `PICK_STATE` | Selected flags (`0`/`1`) for multi-selection, input and output. |
 | `PICK_VALUE` | Initial and submitted ID for single selection. |
 | `PICK_PROMPT` | One line shown above the list. Unset shows a generic title. |
@@ -83,6 +85,14 @@ title shows the focused position. A terminal resize repaints the prompt on a
 cleared screen.
 
 ## Dependency-aware selection
+
+`pick_dependencies` preserves the supplied `PICK_STATE`. Selecting an item adds
+its prerequisites; merely opening or submitting leaves the initial choices
+unchanged, even if that baseline has missing prerequisites.
+It accepts an empty result and supports Back, using the same `0`/`1`/`2`/`3`
+return contract as `pick_multiselect`. A read-only row stays checked or
+unchecked as supplied; a change requiring it to change is refused with its
+reason. It can still be focused to read that reason.
 
 ```bash
 PICK_ID=(base addon bundle)
@@ -108,7 +118,7 @@ Other prerequisites remain selected until explicitly unchecked.
 `PICK_DEPENDENCY_MODE=lock` instead keeps a selected prerequisite locked
 while a selected row requires it. Automatic choices remain checked after
 becoming unlocked, until explicitly unchecked. Unknown mode names produce
-an input error. This option affects only `pick_run`.
+an input error. This option affects `pick_run` and `pick_dependencies`.
 
 `PICK_DIRECT` records explicit choices, `PICK_AUTO` retains automatic
 choices, and `PICK_STATE` contains the combined selection. `pick_close`
@@ -142,7 +152,8 @@ Unknown names produce an input error.
 
 All interactive APIs read their active bindings at the start of each call.
 Single selection uses Up, Down, Submit, Back, and Cancel; multi-selection
-also uses Toggle, All, and Clear; dependency selection uses all but Back.
+also uses Toggle, All, and Clear. `pick_dependencies` supports Back;
+the compatibility entry point `pick_run` leaves it unbound.
 Defaults are initialized when the library is sourced:
 
 ```bash
@@ -173,7 +184,7 @@ Empty arrays disable an action. Unmapped keys have no effect. Each key
 belongs to one action; repeated aliases within that action are deduplicated.
 Back is unbound by default; bind it to let a caller step backwards through
 its own sequence of prompts. Unknown tokens or conflicting actions fail before opening the UI:
-`pick_select` and `pick_multiselect` return `2`; `pick_run` returns `1`.
+`pick_select`, `pick_multiselect`, and `pick_dependencies` return `2`; `pick_run` returns `1`.
 
 The hint below the list shows the active bindings, wrapped to the terminal width. The actions have these semantics:
 
@@ -181,11 +192,15 @@ The hint below the list shows the active bindings, wrapped to the terminal width
 |---|---|---|---|
 | Up / down | Move highlight | Move | Move |
 | Toggle | — | Toggle | Toggle with cascading deselection, or refuse a locked row in lock mode |
-| All | — | Select all included rows | Select all included rows if closure succeeds |
-| Clear | — | Clear all | Clear direct choices; retain automatic choices |
+| All | — | Select editable rows | Select editable rows if closure succeeds |
+| Clear | — | Clear editable rows | Clear editable direct choices; retain automatic choices |
 | Submit | Return highlighted ID | Submit, including empty | Submit a nonempty selection |
 | Back | Return `3` with the highlighted ID | Return `3` with current flags | — |
 | Cancel | Cancel | Cancel | Cancel |
+
+`pick_dependencies` uses the dependency actions above, accepts an empty Submit,
+and returns `3` on Back with the current flags. Read-only checkbox states are
+preserved by Toggle, All, Clear, and dependent deselection.
 
 A lone Esc takes effect after 0.1 seconds, which distinguishes it from an
 escape sequence.

@@ -8,6 +8,7 @@
 #   PICK_LABEL[i]   display text.
 #   PICK_GROUP[i]   group text (unset means an unnamed group).
 #   PICK_VALID[i]   1 includes a row, 0 excludes it; unset means 1.
+#   PICK_DISABLED[i] optional reason a visible checkbox cannot change.
 #   PICK_STATE[i]   0/1 selected state: input/output for pick_multiselect.
 #   PICK_VALUE      single selection input/output ID; unset starts at first row.
 #   PICK_PROMPT     one line shown above the list; unset uses a generic title.
@@ -28,6 +29,8 @@
 # Both return 0 submitted, 1 cancelled, 2 on invalid input or no interactive
 # terminal, 3 when a Back key was pressed. Read results on 0; on 3 they hold
 # the unsubmitted state at that moment.
+# pick_dependencies: retains PICK_STATE, with live prerequisites on selection,
+# empty submission and Back. Returns the same 0/1/2/3 statuses as multiselect.
 # pick_run: dependency-aware selection, starting with nothing checked.
 #   Live closure, dependency-mode deselection, retained auto choices, and
 #   nonempty submission.
@@ -54,7 +57,7 @@
 # Empty arrays disable an action. A key may belong to only one action.
 # Ctrl-C remains a terminal signal. The map is read on each interactive call.
 # Toggle, All, and Clear bindings apply only to multiselect and dependencies.
-# Back applies only to pick_select and pick_multiselect.
+# Back applies to pick_select, pick_multiselect, and pick_dependencies.
 #
 # Optional colors: PICK_FOCUS_COLOR, PICK_SELECTED_COLOR, PICK_GROUP_COLOR.
 #   Empty/default means terminal default. Names: black, red, green, yellow,
@@ -63,13 +66,14 @@
 #   omits colors while supported bold title and dim hint remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
 # The API uses one active PICK_* state in the calling Bash process.
-PICK_VERSION="0.2.0"
+PICK_VERSION="0.3.0"
 
 PICK_ID=()
 PICK_LABEL=()
 PICK_GROUP=()
 PICK_DEPS=()
 PICK_VALID=()
+PICK_DISABLED=()
 PICK_DIRECT=()
 PICK_STATE=()
 unset PICK_VALUE
@@ -228,6 +232,7 @@ pick_restore_snap() {
 pick_close() {
     # Atomic closure of explicit and retained automatic choices.
     local n i k dep j b
+    local -a expand
     n=${#PICK_LABEL[@]}
     pick_validate_items || return 1
     pick_snapshot
@@ -245,7 +250,7 @@ pick_close() {
             if [[ ${PICK_VALID[j]:-1} == 0 ]]; then
                 # Excluded prerequisites cannot join the selected set;
                 # accepting their dependents would return an incomplete closure.
-                if [[ ${PICK_DIRECT[i]:-0} == 1 ]]; then
+                if [[ ${PICK_DIRECT[i]:-0} == 1 && ( -z ${PICK_EXPAND_FROM+x} || $i == "$PICK_EXPAND_FROM" ) ]]; then
                     pick_err "'${PICK_LABEL[i]}' requires '$dep', which is not available"
                     return 1
                 fi
@@ -258,6 +263,9 @@ pick_close() {
         done
     done
     for ((i=0; i<n; i++)); do
+        expand[i]=0
+        if [[ -z ${PICK_EXPAND_FROM+x} || $i == "$PICK_EXPAND_FROM" ||
+              ( $PICK_EXPAND_FROM == auto && ${PICK_AUTO[i]:-0} == 1 ) ]]; then expand[i]=1; fi
         if [[ ${PICK_VALID[i]:-1} == 0 ]]; then
             PICK_DIRECT[i]=0
             PICK_STATE[i]=0
@@ -277,7 +285,7 @@ pick_close() {
     while ((changed)); do
         changed=0
         for ((i=0; i<n; i++)); do
-            [[ ${PICK_STATE[i]:-0} == 1 && ${PICK_VALID[i]:-1} != 0 ]] || continue
+            [[ ${PICK_STATE[i]:-0} == 1 && ${PICK_VALID[i]:-1} != 0 && ${expand[i]} == 1 ]] || continue
             pick_split_csv "${PICK_DEPS[i]:-}"
             for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
                 dep=${PICK_SPLIT[k]}
@@ -285,6 +293,7 @@ pick_close() {
                 j=$(pick_find_id "$dep")
                 [[ $j -ge 0 ]] || continue
                 [[ ${PICK_VALID[j]:-1} != 0 ]] || continue
+                if [[ ${expand[j]} != 1 ]]; then expand[j]=1; changed=1; fi
                 if [[ ${PICK_STATE[j]:-0} != 1 ]]; then
                     PICK_STATE[j]=1
                     [[ ${PICK_DIRECT[j]:-0} == 1 ]] || PICK_AUTO[j]=1
@@ -297,7 +306,7 @@ pick_close() {
     # roots: a transitively pulled-in row whose prerequisite is unavailable
     # fails the entire plan instead of publishing a partial one.
     for ((i=0; i<n; i++)); do
-        [[ ${PICK_STATE[i]:-0} == 1 && ${PICK_VALID[i]:-1} != 0 ]] || continue
+        [[ ${PICK_STATE[i]:-0} == 1 && ${PICK_VALID[i]:-1} != 0 && ${expand[i]} == 1 ]] || continue
         pick_split_csv "${PICK_DEPS[i]:-}"
         for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
             dep=${PICK_SPLIT[k]}
@@ -312,6 +321,11 @@ pick_close() {
         done
     done
     for ((b=0; b<n; b++)); do
+        if [[ -n ${PICK_DISABLED[b]:-} && ${PICK_STATE[b]:-0} != ${PICK_SNAP_STATE[b]:-0} ]]; then
+            pick_err "${PICK_LABEL[b]}: ${PICK_DISABLED[b]}"
+            pick_restore_snap
+            return 1
+        fi
         [[ -n ${PICK_DIRECT[b]+set} ]] || PICK_DIRECT[b]=0
     done
     return 0
@@ -801,6 +815,9 @@ pick_item_line() {
         done
         [[ -z $reqs ]] || notes="requires $reqs"
     fi
+    if [[ -n ${PICK_DISABLED[idx]:-} ]]; then
+        notes="${notes:+$notes; }${PICK_DISABLED[idx]}"
+    fi
     if ((pos == PICK_CURSOR)); then
         PICK_ROW='> '
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
@@ -820,10 +837,12 @@ pick_action() {
     case $action in
         toggle)
             idx=${PICK_FOCUS[PICK_CURSOR]}
+            if [[ -n ${PICK_DISABLED[idx]:-} ]]; then PICK_MSG=${PICK_DISABLED[idx]}; return 0; fi
             PICK_STATE[idx]=$((1 - ${PICK_STATE[idx]:-0}))
             ;;
         all|clear)
             for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+                [[ -z ${PICK_DISABLED[i]:-} ]] || continue
                 if [[ $action == all && ${PICK_VALID[i]:-1} != 0 ]]; then PICK_STATE[i]=1
                 else PICK_STATE[i]=0; fi
             done
@@ -835,6 +854,7 @@ pick_action() {
 pick_toggle() {
     local idx depnames
     idx=${PICK_FOCUS[PICK_CURSOR]}
+    if [[ -n ${PICK_DISABLED[idx]:-} ]]; then PICK_MSG=${PICK_DISABLED[idx]}; return 0; fi
     depnames=$(pick_locked_by "$idx")
     if [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
         if [[ -n $depnames ]]; then PICK_MSG="${PICK_LABEL[idx]} stays checked: required by $depnames."; return 0; fi
@@ -844,6 +864,7 @@ pick_toggle() {
     fi
     PICK_DIRECT[idx]=1
     PICK_STATE[idx]=1
+    if [[ ${PICK_PRESERVE_INITIAL:-0} == 1 ]]; then local PICK_EXPAND_FROM=$idx; fi
     # Route the toggle through the same validated closure as the
     # noninteractive path. Quiet mode shows the reason on screen instead
     # of scribbling over the terminal frame.
@@ -864,6 +885,9 @@ pick_toggle() {
 
 pick_deselect() {
     local idx=$1 i k j removed=
+    local -a removed_rows
+    removed_rows[idx]=1
+    pick_snapshot
     PICK_STATE[idx]=0
     PICK_DIRECT[idx]=0
     PICK_AUTO[idx]=0
@@ -875,18 +899,26 @@ pick_deselect() {
             pick_split_csv "${PICK_DEPS[i]:-}"
             for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
                 j=$(pick_find_id "${PICK_SPLIT[k]}")
-                if [[ $j -ge 0 && ${PICK_STATE[j]:-0} != 1 ]]; then
+                if [[ $j -ge 0 && ${removed_rows[j]:-0} == 1 ]]; then
                     # Clear retained history too, so the next closure does
                     # not reintroduce the dependent or its removed prerequisite.
                     PICK_STATE[i]=0
                     PICK_DIRECT[i]=0
                     PICK_AUTO[i]=0
+                    removed_rows[i]=1
                     removed="${removed:+$removed, }${PICK_LABEL[i]}"
                     break
                 fi
             done
         done
     fi
+    for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+        if [[ -n ${PICK_DISABLED[i]:-} && ${PICK_STATE[i]:-0} != ${PICK_SNAP_STATE[i]:-0} ]]; then
+            pick_restore_snap
+            PICK_MSG="${PICK_LABEL[i]}: ${PICK_DISABLED[i]}"
+            return 0
+        fi
+    done
     PICK_MSG=
     [[ -z $removed ]] || PICK_MSG="Also unchecked $removed."
     return 0
@@ -905,7 +937,7 @@ pick_check_all() {
         save_auto[i]=${PICK_AUTO[i]:-0}
     done
     for ((i=0; i<n; i++)); do
-        [[ ${PICK_VALID[i]:-1} != 0 ]] || continue
+        [[ ${PICK_VALID[i]:-1} != 0 && -z ${PICK_DISABLED[i]:-} ]] || continue
         PICK_DIRECT[i]=1
         PICK_STATE[i]=1
     done
@@ -927,11 +959,11 @@ pick_check_all() {
 }
 
 pick_clear_directs() {
-    # Only currently retained auto selections stay checked; anything the
-    # user explicitly unchecked stays unchecked. Runs the same closure so
-    # the result is always a satisfied plan: retained rows pull back the
-    # prerequisites they need as auto selections.
+    # Retained automatic choices still require their prerequisite chains.
+    # Seeded callers expand those chains without repairing unrelated,
+    # read-only baseline choices that were already incomplete.
     local i n
+    if [[ ${PICK_PRESERVE_INITIAL:-0} == 1 ]]; then local PICK_EXPAND_FROM=auto; fi
     n=${#PICK_LABEL[@]}
     local -a save_direct save_state save_auto
     for ((i=0; i<n; i++)); do
@@ -939,7 +971,10 @@ pick_clear_directs() {
         save_state[i]=${PICK_STATE[i]:-0}
         save_auto[i]=${PICK_AUTO[i]:-0}
     done
-    for ((i=0; i<n; i++)); do PICK_DIRECT[i]=0; done
+    for ((i=0; i<n; i++)); do
+        [[ -z ${PICK_DISABLED[i]:-} ]] || continue
+        PICK_DIRECT[i]=0
+    done
     PICK_QUIET=1
     PICK_MSG=
     if ! pick_close; then
@@ -974,7 +1009,7 @@ pick_sel_count() {
 }
 
 pick_run() {
-    local PICK_MODE=dependencies i
+    local PICK_MODE=dependencies PICK_ALLOW_EMPTY=0 PICK_ALLOW_BACK=0 PICK_PRESERVE_INITIAL=0 i
     case ${PICK_DEPENDENCY_MODE:-cascade} in
         cascade|lock) ;;
         *) pick_err "unknown dependency mode '${PICK_DEPENDENCY_MODE}'"; return 1 ;;
@@ -1096,7 +1131,7 @@ pick_interact() {
             back) rc=3; break ;;
             submit)
                 if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
-                if [[ $PICK_MODE == dependencies && $(pick_sel_count) == 0 ]]; then PICK_MSG="Check at least one item to submit."
+                if [[ $PICK_MODE == dependencies && ${PICK_ALLOW_EMPTY:-0} == 0 && $(pick_sel_count) == 0 ]]; then PICK_MSG="Check at least one item to submit."
                 else rc=0; break; fi
                 ;;
         esac
@@ -1232,7 +1267,7 @@ pick_prepare_keys() {
         pick_bind_keys clear "${PICK_KEYS_CLEAR[@]}" || return 1
     fi
     pick_bind_keys submit "${PICK_KEYS_SUBMIT[@]}" || return 1
-    if [[ $PICK_MODE == dependencies ]]; then pick_bind_keys back
+    if [[ $PICK_MODE == dependencies && ${PICK_ALLOW_BACK:-0} == 0 ]]; then pick_bind_keys back
     else pick_bind_keys back "${PICK_KEYS_BACK[@]}" || return 1; fi
     pick_bind_keys cancel "${PICK_KEYS_CANCEL[@]}" || return 1
 }
@@ -1246,4 +1281,26 @@ pick_key_action() {
             return 0
         fi
     done
+}
+
+pick_dependencies() {
+    local PICK_MODE=dependencies PICK_ALLOW_EMPTY=1 PICK_ALLOW_BACK=1 PICK_PRESERVE_INITIAL=1 i
+    local -a initial=("${PICK_STATE[@]}")
+    case ${PICK_DEPENDENCY_MODE:-cascade} in
+        cascade|lock) ;;
+        *) pick_err "unknown dependency mode '${PICK_DEPENDENCY_MODE}'"; return 2 ;;
+    esac
+    for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+        PICK_DIRECT[i]=0
+        PICK_STATE[i]=0
+        PICK_AUTO[i]=0
+    done
+    # Validate the graph without changing the caller's preselected baseline.
+    pick_close || return 2
+    for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
+        if [[ ${PICK_VALID[i]:-1} != 0 && ${initial[i]:-0} == 1 ]]; then
+            PICK_DIRECT[i]=1; PICK_STATE[i]=1
+        fi
+    done
+    pick_interact
 }
