@@ -3,7 +3,7 @@
 # Enter moves forward, Left/Backspace goes back, and the review lists each
 # answer so it can be changed directly.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
-source "$ROOT/lib/picker.sh" || exit 2
+source "$ROOT/lib/bash-prompts.sh" || exit 2
 
 component_ids=(editor formatter preview)
 component_labels=(Editor Formatter Preview)

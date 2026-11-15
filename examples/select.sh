@@ -1,7 +1,7 @@
 #!/bin/bash
 # One focused item, returned as an ID when submitted.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
-source "$ROOT/lib/picker.sh" || exit 2
+source "$ROOT/lib/bash-prompts.sh" || exit 2
 
 PICK_PROMPT='Which app should open?'
 PICK_ID=(terminal editor browser)

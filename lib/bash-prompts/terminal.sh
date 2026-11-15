@@ -1,0 +1,231 @@
+# bash-prompts: terminal setup and teardown, signals, colors, widths, frame output.
+# Function definitions only; sourced in the caller shell by lib/bash-prompts.sh.
+
+pick_traps_save() {
+    PICK_SAVED_INT=$(trap -p INT || true)
+    PICK_SAVED_TERM=$(trap -p TERM || true)
+    PICK_TRAPS_ARMED=1
+}
+
+pick_traps_restore() {
+    # Idempotent: only the first call restores, so cleanup paths and signal
+    # handlers cannot delete the caller's handlers by restoring twice.
+    if ((PICK_TRAPS_ARMED)); then
+        if [[ -n $PICK_SAVED_INT ]]; then eval "$PICK_SAVED_INT"; else trap - INT; fi
+        if [[ -n $PICK_SAVED_TERM ]]; then eval "$PICK_SAVED_TERM"; else trap - TERM; fi
+        PICK_SAVED_INT=
+        PICK_SAVED_TERM=
+        PICK_TRAPS_ARMED=0
+    fi
+}
+
+pick_on_int() {
+    # Mark the interrupt so the main loop stops instead of re-rendering.
+    # The restored caller handler (if any) runs via the re-raised signal;
+    # with the default disposition the process terminates here with 130.
+    pick_cleanup_term
+    pick_traps_restore
+    PICK_GOT_SIGNAL=INT
+    kill -INT $$ || true
+}
+
+pick_on_term() {
+    pick_cleanup_term
+    pick_traps_restore
+    PICK_GOT_SIGNAL=TERM
+    kill -TERM $$ || true
+}
+
+pick_setup_term() {
+    [[ -t 0 && -t 1 ]] || return 1
+    pick_prepare_colors || return 1
+    PICK_SAVED_STTY=$(stty -g) || return 1
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+    # ISIG stays enabled so Ctrl-C still reaches the caller's signal handler.
+    # Bash's own read -n imposes VMIN=1 for its duration; min/time here only
+    # bound pick_read_escape, so a lone Esc resolves after 0.1 seconds.
+    stty -echo -icanon min 0 time 1 || return 1
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+    # Capability checks stay silent; the sequences below go to the terminal.
+    if tput clear >/dev/null 2>&1; then PICK_CLEAR=1; else PICK_CLEAR=0; fi
+    if tput civis >/dev/null 2>&1; then PICK_CIVIS=1; else PICK_CIVIS=0; fi
+    # Cache the paint sequences once; per-frame emission then needs no
+    # further tput invocations. An empty result means unsupported.
+    PICK_UP=$(tput cuu1 2>/dev/null || true)
+    PICK_EL=$(tput el 2>/dev/null || true)
+    PICK_ED=$(tput ed 2>/dev/null || true)
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+    if ((PICK_CIVIS)); then tput civis || true; fi
+    return 0
+}
+
+pick_inline() {
+    [[ -n $PICK_UP && -n $PICK_EL && -n $PICK_ED ]]
+}
+
+pick_frame_home() {
+    # Sets PICK_HOME to the sequence that returns from the last painted line
+    # to the start of the frame's first line.
+    local r
+    PICK_HOME=$'\r'
+    for ((r=1; r<PICK_PREV_COUNT; r++)); do PICK_HOME+=$PICK_UP; done
+}
+
+pick_cleanup_term() {
+    # The prompt is drawn inline below the caller's output; erasing it leaves
+    # the cursor where the prompt started, so the caller's next output
+    # continues from there.
+    if ((PICK_PREV_COUNT > 0)) && pick_inline; then
+        pick_frame_home
+        printf '%s%s' "$PICK_HOME" "$PICK_ED"
+    fi
+    PICK_PREV_COUNT=0
+    if ((PICK_CIVIS)); then tput cnorm || true; fi
+    PICK_CIVIS=0
+    if [[ -n $PICK_STYLE_RESET ]]; then printf '%s' "$PICK_STYLE_RESET"; fi
+    PICK_STYLE_RESET=
+    if [[ -n $PICK_SAVED_STTY ]]; then stty "$PICK_SAVED_STTY" || true; fi
+    # Keep the snapshot until pick_interact exits: after a returning signal
+    # handler, Bash read can reinstate its own noncanonical terminal settings.
+}
+
+pick_clear_screen() {
+    # Best effort: tput genuinely fails on unsupported terminals, and a
+    # failed clear must never break selection or cleanup. Refuses when a
+    # pending interrupt already restored the screen, so no caller can
+    # clear over it by missing its own check.
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+    if ((PICK_CLEAR)); then tput clear || true; else printf '\n\n\n'; fi
+}
+
+pick_term_size() {
+    # Sets PICK_TROWS/PICK_TCOLS. stty reads the terminal on stdin; tput
+    # inside a command substitution sees no terminal and reports 24x80.
+    local size
+    size=$(stty size 2>/dev/null) || size=
+    PICK_TROWS=${size% *}
+    PICK_TCOLS=${size#* }
+    case $PICK_TROWS in ''|*[!0-9]*) PICK_TROWS=24 ;; esac
+    case $PICK_TCOLS in ''|*[!0-9]*) PICK_TCOLS=80 ;; esac
+    ((PICK_TROWS > 0)) || PICK_TROWS=24
+    ((PICK_TCOLS > 0)) || PICK_TCOLS=80
+}
+
+pick_color_number() {
+    case $1 in
+        ''|default) printf '%s' -1 ;;
+        black) printf 0 ;; red) printf 1 ;; green) printf 2 ;;
+        yellow) printf 3 ;; blue) printf 4 ;; magenta) printf 5 ;;
+        cyan) printf 6 ;; white) printf 7 ;;
+        *) pick_err "unknown color '$1'"; return 1 ;;
+    esac
+}
+
+pick_prepare_colors() {
+    local focus selected group colors
+    PICK_STYLE_FOCUS=; PICK_STYLE_SELECTED=; PICK_STYLE_GROUP=
+    PICK_STYLE_TITLE=; PICK_STYLE_HINT=; PICK_STYLE_RESET=
+    focus=$(pick_color_number "${PICK_FOCUS_COLOR-}") || return 1
+    selected=$(pick_color_number "${PICK_SELECTED_COLOR-}") || return 1
+    group=$(pick_color_number "${PICK_GROUP_COLOR-}") || return 1
+    [[ -z ${NO_COLOR-} && ${TERM-} != dumb ]] || return 0
+    PICK_STYLE_RESET=$(tput sgr0 2>/dev/null) || { PICK_STYLE_RESET=; return 0; }
+    [[ -n $PICK_STYLE_RESET ]] || return 0
+    # The title stands out and the key hint recedes without any color.
+    PICK_STYLE_TITLE=$(tput bold 2>/dev/null || true)
+    PICK_STYLE_HINT=$(tput dim 2>/dev/null || true)
+    ((focus >= 0 || selected >= 0 || group >= 0)) || return 0
+    colors=$(tput colors 2>/dev/null) || return 0
+    case $colors in ''|*[!0-9]*) return 0 ;; esac
+    ((colors >= 8)) || return 0
+    if ((focus >= 0)); then PICK_STYLE_FOCUS=$(tput setaf "$focus" 2>/dev/null || true); fi
+    if ((selected >= 0)); then PICK_STYLE_SELECTED=$(tput setaf "$selected" 2>/dev/null || true); fi
+    if ((group >= 0)); then PICK_STYLE_GROUP=$(tput setaf "$group" 2>/dev/null || true); fi
+    return 0
+}
+
+pick_clip() {
+    # $1 = text, $2 = cells; sets PICK_CLIPPED to the longest prefix that
+    # fits. Each painted element must stay one physical row, because inline
+    # repainting moves up by element count. Non-ASCII text is measured in
+    # UTF-8 bytes: characters from U+2000 up (CJK, Hangul, kana, fullwidth
+    # forms, emoji, and ambiguous-width symbols) count as two cells. Narrow
+    # ones among them are overcounted, which clips early but never wraps.
+    local text=$1 max=$2
+    if ((max <= 0)); then PICK_CLIPPED=; return 0; fi
+    if [[ $text != *[![:ascii:]]* ]]; then
+        PICK_CLIPPED=${text:0:$max}
+        return 0
+    fi
+    local LC_ALL=C
+    local n=${#text} i=0 w=0 b c len cw
+    while ((i < n)); do
+        b=${text:i:1}
+        if [[ $b < $'\x80' ]]; then len=1; cw=1
+        elif [[ $b < $'\xe0' ]]; then len=2; cw=1
+        elif [[ $b < $'\xf0' ]]; then
+            len=3; cw=2
+            if [[ $b == $'\xe0' ]]; then cw=1
+            elif [[ $b == $'\xe1' ]]; then
+                # U+1000-U+1FFF is narrow except Hangul Jamo, U+1100-U+11FF.
+                c=${text:i+1:1}
+                [[ $c < $'\x84' || $c > $'\x87' ]] && cw=1
+            fi
+        else len=4; cw=2; fi
+        ((w + cw <= max)) || break
+        w=$((w + cw))
+        i=$((i + len))
+    done
+    PICK_CLIPPED=${text:0:i}
+}
+
+pick_emit_frame() {
+    # $1 = width. The whole frame goes out in a single write that returns to
+    # the frame's first line, with stale tails and leftover rows erased as
+    # part of the same payload, so ordinary keys emit no clear.
+    # The painting boundary: never emit onto a screen the signal handler
+    # already restored. Payload construction above writes nothing; each
+    # actual output site rechecks the flag, which shrinks post-cleanup
+    # painting to the check-to-write gap. A signal inside that gap, or
+    # truly mid-write, can still leave one partial or full write — that
+    # bounded residue is inherent to async signals. No second write
+    # follows a refusal, because every refusal breaks the main loop.
+    [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+    local cols=$1 i line n out style
+    n=${#PICK_FRAME[@]}
+    if pick_inline; then
+        pick_frame_home
+        out=$PICK_HOME
+        # One column stays free so a full-width line never leaves the
+        # cursor in the pending-wrap state.
+        cols=$((cols - 1))
+        for ((i=0; i<n; i++)); do
+            pick_clip "${PICK_FRAME[i]}" "$cols"
+            line=$PICK_CLIPPED
+            style=${PICK_FRAME_STYLE[i]-}
+            if [[ -n $style && -n $line ]]; then line="$style$line$PICK_STYLE_RESET"; fi
+            out+="$line$PICK_EL"
+            if ((i < n-1)); then out+=$'\n'; fi
+        done
+        out+=$PICK_ED
+        [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+        printf '%s' "$out"
+    else
+        # Same interrupted-output handling as the fast path: batch into one
+        # write with a check immediately before it, instead of emitting
+        # line by line past a single early check.
+        [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+        out=
+        for ((i=0; i<n; i++)); do
+            pick_clip "${PICK_FRAME[i]}" "$cols"
+            line=$PICK_CLIPPED
+            style=${PICK_FRAME_STYLE[i]-}
+            if [[ -n $style ]]; then line="$style$line$PICK_STYLE_RESET"; fi
+            out+="$line"$'\n'
+        done
+        [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+        pick_clear_screen || return 1
+        [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
+        printf '%s' "$out"
+    fi
+}

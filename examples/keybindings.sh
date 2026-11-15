@@ -1,7 +1,7 @@
 #!/bin/bash
 # Rebind every action; the same key arrays serve the interactive APIs.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
-source "$ROOT/lib/picker.sh" || exit 2
+source "$ROOT/lib/bash-prompts.sh" || exit 2
 
 PICK_PROMPT='Which tools should be included?'
 PICK_ID=(editor formatter preview)

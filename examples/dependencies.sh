@@ -1,7 +1,7 @@
 #!/bin/bash
 # Dependency-aware selection using IDs independently of display text.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
-source "$ROOT/lib/picker.sh" || exit 2
+source "$ROOT/lib/bash-prompts.sh" || exit 2
 PICK_DEPENDENCY_MODE=${1:-cascade}
 
 PICK_PROMPT='Which components should be set up?'
