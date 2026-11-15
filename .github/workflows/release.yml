@@ -1,0 +1,45 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the standalone bundle
+        run: bash scripts/bundle.sh
+      - name: Check the bundle syntax
+        run: bash -n dist/bash-prompts.sh
+      - name: Smoke-test the bundle
+        run: |
+          check=${RUNNER_TEMP:-/tmp}/bundle-check
+          rm -rf "$check"
+          mkdir -p "$check" || exit 1
+          cp dist/bash-prompts.sh "$check/" || exit 1
+          cd "$check" || exit 1
+          bash -c '
+            source ./bash-prompts.sh || exit 1
+            test "v$PICK_VERSION" = "$0" || exit 1
+            declare -F pick_select >/dev/null || exit 1
+            PICK_ID=(base addon)
+            PICK_LABEL=(Base Addon)
+            PICK_DIRECT=(0 1)
+            PICK_AUTO=(0 0)
+            PICK_STATE=(0 0)
+            PICK_DEPS=("" base)
+            pick_close || exit 1
+            test "${PICK_STATE[*]}" = "1 1" || exit 1
+          ' "$GITHUB_REF_NAME"
+      - name: Attach the bundle to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/bash-prompts.sh
+            LICENSE

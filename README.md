@@ -15,10 +15,29 @@ when it ends, leaving the cursor where it started; print the result or the
 next prompt from there. Start a prompt on a fresh line.
 Exercised on macOS; other platforms are not yet verified.
 
+## Install
+
+Use a pinned release asset; no build step is needed:
+
+```bash
+curl -fsSLO https://github.com/undervoke/bash-prompts/releases/download/v0.5.0/bash-prompts.sh
+source ./bash-prompts.sh
+```
+
+From a checkout, source the development entry instead:
+
+```bash
+source ./lib/bash-prompts.sh
+```
+
+The entry loads the feature modules in `lib/bash-prompts/` in the calling
+shell, so `demo` and `examples/` run directly from a checkout. Snippets
+below source `./bash-prompts.sh`; in a checkout use `./lib/bash-prompts.sh`.
+
 ## Single select
 
 ```bash
-source ./lib/picker.sh
+source ./bash-prompts.sh
 PICK_ID=(terminal editor browser)
 PICK_LABEL=(Terminal Editor Browser)
 PICK_GROUP=(Workspace Workspace Tools)
@@ -39,7 +58,7 @@ Checkbox state and dependency inputs do not affect single selection.
 ## Multi-select
 
 ```bash
-source ./lib/picker.sh
+source ./bash-prompts.sh
 PICK_ID=(editor formatter notes)
 PICK_LABEL=('Editor' 'Formatter' 'Notes, drafts')
 PICK_GROUP=(Tools Tools Documents)
@@ -62,10 +81,8 @@ Parallel, dense, zero-based arrays describe each row; `PICK_VALUE` is a scalar:
 |---|---|
 | `PICK_ID` | Unique identity. An unset entry falls back to its label. |
 | `PICK_LABEL` | Display text; labels may repeat when IDs differ. |
-| `PICK_GROUP` | Group text. Unset means an unnamed group. |
-| `PICK_SUBGROUP` | Sub-group text inside the group. Unset means none. |
-| `PICK_SUBSUBGROUP` | Sub-sub-group text inside the sub-group. Unset means none. |
-| `PICK_GROUP_TAIL` | Names of groups rendered after the other groups of their parent. |
+| `PICK_GROUP` | Group ID when groups are declared; otherwise single-level group text. Empty or unset places an item at the root. |
+| `PICK_GROUP_TAIL` | Group IDs rendered after their siblings, including at the root. |
 | `PICK_VALID` | `0` excludes a row; `1` or unset includes it. |
 | `PICK_DISABLED` | Optional reason a visible checkbox is read-only; its initial state is retained. Applies to multi/dependency selection. |
 | `PICK_STATE` | Selected flags (`0`/`1`) for multi-selection, input and output. |
@@ -80,18 +97,85 @@ interactive terminal, or `3` when a Back key was pressed. Read results on `0`;
 on `3`, `PICK_VALUE` or `PICK_STATE` holds the unsubmitted state at that moment.
 
 Each named group gets a header; multi-selection headers show selected/total
-counts. A group can be split into named sub-groups, and a sub-group into named
-sub-sub-groups: each named level adds a header, and the items below it are
-indented one level per named header above them. A level without text adds no
-header and no indent, so rows can sit directly under their parent. Groups are
-ordered by first appearance, except that the groups named in
-`PICK_GROUP_TAIL` come last within their parent. The whole prompt fits the
-terminal height: the list takes the rows it needs, and on a short terminal the
-spacer, then hint lines, then the message, then the title give way to keep at
-least one list row. When a long list scrolls, the headers of the visible
-group, sub-group, and sub-sub-group stay pinned at the top and the
-title shows the focused position. A terminal resize repaints the prompt on a
-cleared screen.
+counts across its included descendants. The whole prompt fits the terminal
+height: on a short terminal the spacer, hint lines, message, and title give
+way to keep at least one list row. Scrolled-off ancestor headers stay pinned;
+when space is tight, the nearest ancestors take priority and the focused
+item stays visible. The title shows the focused position while scrolling.
+A terminal resize repaints the prompt on a cleared screen.
+
+## Recursive groups and separators
+
+`pick_group <id> [label [parent-id]]` declares a group. `PICK_GROUP[i]` assigns
+an item to that group; an empty parent places a group at the root. Labels
+default to IDs and may repeat. An explicitly empty label adds neither a
+header nor indentation. Each named ancestor adds one level of indentation.
+
+```bash
+source ./bash-prompts.sh
+pick_group tools 'Tools'
+pick_group code 'Code' tools
+pick_group editors 'Editors' code
+pick_group terminal 'Terminal' editors
+pick_group documents 'Documents'
+
+PICK_ID=(vim formatter notes)
+PICK_LABEL=('Vim' 'Formatter' 'Notes')
+PICK_GROUP=(terminal code documents)
+PICK_GROUP_TAIL=(documents)
+PICK_MAX_GROUP_DEPTH=8
+PICK_GROUP_JUMP_DEPTH=1
+PICK_KEYS_PREV_GROUP=(Left h)
+PICK_KEYS_NEXT_GROUP=(Right l)
+
+pick_separator formatter 'Formatting'
+pick_separator notes                 # A plain divider
+pick_separator '' 'End of options'    # A trailing separator
+
+if pick_multiselect; then
+    pick_selected_indices
+fi
+```
+
+Group IDs are unique and nonempty so parent references identify one node.
+Declarations may precede or follow their parents. `PICK_MAX_GROUP_DEPTH` is a
+positive integer, defaulting to `8`; it counts parent links, including groups
+with empty labels. Unknown group references, cycles, and excess depth return
+an input error before terminal setup. Groups with no included descendants
+have no display rows.
+
+Sibling groups and direct items follow their first appearance in the included
+item list. `PICK_GROUP_TAIL` moves the named group IDs after their siblings,
+retaining relative order within the ordinary and tail groups. With no group
+declarations, existing `PICK_GROUP=(Tools Tools Documents)` input creates
+single-level groups with matching IDs and labels; empty text collects items
+into one unnamed group.
+
+`PICK_GROUP_JUMP_DEPTH` sets the structural depth for group jumps and defaults
+to `1`; root groups are depth 1. It must be a positive integer; other values
+return an input error. `PICK_KEYS_PREV_GROUP` and
+`PICK_KEYS_NEXT_GROUP` are unbound by default. Bind them to focus the first
+included item of the previous or next group at that depth. Jumps follow
+display order, including tail ordering, and change only the focus, preserving
+selection and dependency state. An item above the reference depth moves to the
+nearest eligible group in that direction. Unnamed groups remain eligible
+destinations. A jump past either end leaves the focus unchanged. A reference
+depth deeper than the tree has no destination.
+
+`pick_separator [before-id [label]]` inserts a display-only row before the
+specified item and any headers newly entered for that item. An empty or
+omitted ID appends it to the list; an empty or omitted label draws a line.
+Separators have no indentation or group membership, are skipped by the cursor,
+and contribute nothing to selection results, dependencies, or group counts.
+They follow their anchor when groups reorder; an excluded anchor hides its
+separators, and an unknown ID returns an input error. Multiple separators at
+the same position retain declaration order. They scroll with the list.
+
+The helpers append to parallel `PICK_GROUP_ID`, `PICK_GROUP_LABEL`,
+`PICK_GROUP_PARENT` and `PICK_SEPARATOR_BEFORE`, `PICK_SEPARATOR_LABEL` arrays.
+These arrays can also be assigned directly. Clear the corresponding arrays
+when replacing definitions between prompts; all are initialized empty when
+the library is sourced.
 
 ## Dependency-aware selection
 
@@ -161,13 +245,16 @@ Unknown names produce an input error.
 
 All interactive APIs read their active bindings at the start of each call.
 Single selection uses Up, Down, Submit, Back, and Cancel; multi-selection
-also uses Toggle, All, and Clear. `pick_dependencies` supports Back;
-the compatibility entry point `pick_run` leaves it unbound.
+also uses Toggle, All, and Clear. Prev/next group jumps are available in every
+interactive API when bound. `pick_dependencies` supports Back; the
+compatibility entry point `pick_run` leaves it unbound.
 Defaults are initialized when the library is sourced:
 
 ```bash
 PICK_KEYS_UP=(Up k)
 PICK_KEYS_DOWN=(Down j)
+PICK_KEYS_PREV_GROUP=()
+PICK_KEYS_NEXT_GROUP=()
 PICK_KEYS_TOGGLE=(Space)
 PICK_KEYS_ALL=(a)
 PICK_KEYS_CLEAR=(n)
@@ -200,6 +287,7 @@ The hint below the list shows the active bindings, wrapped to the terminal width
 | Action | `pick_select` | `pick_multiselect` | `pick_run` |
 |---|---|---|---|
 | Up / down | Move highlight | Move | Move |
+| Prev / next group | Jump at `PICK_GROUP_JUMP_DEPTH` | Jump | Jump |
 | Toggle | — | Toggle | Toggle with cascading deselection, or refuse a locked row in lock mode |
 | All | — | Select editable rows | Select editable rows if closure succeeds |
 | Clear | — | Clear editable rows | Clear editable direct choices; retain automatic choices |
@@ -255,6 +343,8 @@ Use a name to run an example directly and return its exit status:
 ./demo dependencies
 ./demo lock
 ./demo keybindings
+./demo nested
+./demo separators
 ./demo wizard
 NO_COLOR=1 ./demo checkbox
 ```
@@ -265,7 +355,10 @@ selection with an initial focus; `checkbox` shows initial checked state,
 repeated labels with distinct IDs, and colors. `dependencies` shows
 transitive automatic selection and cascading deselection, then prints each
 selected ID as direct or auto with the selected IDs that require it; `lock`
-shows the alternative locking behavior.
+shows the alternative locking behavior. `nested` demonstrates four levels,
+parent counts, tail ordering, separators inside and between groups, and
+Left/Right group jumps at depth 2; `separators` demonstrates dividers in a
+single-select list without groups.
 
 `examples/wizard.sh` asks two `pick_multiselect` steps and a `pick_select`
 review. Enter moves to the next step; Left or Backspace (bound through
@@ -278,6 +371,15 @@ the prompts and the Back return status.
 `examples/keybindings.sh` uses w/s or arrows to move, x/Space to toggle,
 uppercase A/C to select/clear all, f/Enter to submit, and z/Esc to cancel.
 The replaced j/k, a/n and q/Q bindings are inactive in this example.
+
+## Build and release
+
+`bash scripts/bundle.sh` regenerates the standalone `dist/bash-prompts.sh`
+from `lib/bash-prompts.sh` and `lib/bash-prompts/`; the output is
+deterministic and ignored by Git. To publish, set `PICK_VERSION`, then push
+the matching tag (`v0.5.0` for `"0.5.0"`): the release workflow rebuilds
+the bundle, checks it, and attaches `bash-prompts.sh` and `LICENSE` to the
+GitHub Release.
 
 ## License
 
