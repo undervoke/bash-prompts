@@ -111,11 +111,13 @@ pick_interact() {
         case $PICK_KEY_ACTION in
             up)
                 PICK_MSG=
-                if ((PICK_CURSOR > 0)); then PICK_CURSOR=$((PICK_CURSOR - 1)); fi
+                if ((PICK_CURSOR > 0)); then PICK_CURSOR=$((PICK_CURSOR - 1))
+                elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then PICK_CURSOR=$((${#PICK_FOCUS[@]} - 1)); fi
                 ;;
             down)
                 PICK_MSG=
-                if ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)); then PICK_CURSOR=$((PICK_CURSOR + 1)); fi
+                if ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)); then PICK_CURSOR=$((PICK_CURSOR + 1))
+                elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then PICK_CURSOR=0; fi
                 ;;
             prev_group) PICK_MSG=; pick_jump_group -1 ;;
             next_group) PICK_MSG=; pick_jump_group 1 ;;

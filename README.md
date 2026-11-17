@@ -20,7 +20,7 @@ Exercised on macOS; other platforms are not yet verified.
 Use a pinned release asset; no build step is needed:
 
 ```bash
-curl -fsSLO https://github.com/undervoke/bash-prompts/releases/download/v0.5.0/bash-prompts.sh
+curl -fsSLO https://github.com/undervoke/bash-prompts/releases/download/v0.6.0/bash-prompts.sh
 source ./bash-prompts.sh
 ```
 
@@ -278,6 +278,10 @@ A token is one printable ASCII character or one of `Up`, `Down`, `Left`,
 normalizes to `Space`. Arrow tokens recognize unmodified CSI and SS3 terminal sequences.
 Empty arrays disable an action. Unmapped keys have no effect. Each key
 belongs to one action; repeated aliases within that action are deduplicated.
+
+`PICK_WRAP_NAVIGATION` applies to item up/down actions, including configured
+aliases, and defaults to `1`: Down from the last row wraps to the first, and
+Up from the first wraps to the last. Set it to `0` to retain bounded movement.
 Back is unbound by default; bind it to let a caller step backwards through
 its own sequence of prompts. Unknown tokens or conflicting actions fail before opening the UI:
 `pick_select`, `pick_multiselect`, and `pick_dependencies` return `2`; `pick_run` returns `1`.
@@ -377,7 +381,7 @@ The replaced j/k, a/n and q/Q bindings are inactive in this example.
 `bash scripts/bundle.sh` regenerates the standalone `dist/bash-prompts.sh`
 from `lib/bash-prompts.sh` and `lib/bash-prompts/`; the output is
 deterministic and ignored by Git. To publish, set `PICK_VERSION`, then push
-the matching tag (`v0.5.0` for `"0.5.0"`): the release workflow rebuilds
+the matching tag (`v0.6.0` for `"0.6.0"`): the release workflow rebuilds
 the bundle, checks it, and attaches `bash-prompts.sh` and `LICENSE` to the
 GitHub Release.
 

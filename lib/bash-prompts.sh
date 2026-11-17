@@ -71,6 +71,10 @@
 # PICK_GROUP_JUMP_DEPTH; an item above that depth moves to the nearest group
 # in that direction. Ctrl-C remains a terminal signal. The map is read on
 # each interactive call.
+# PICK_WRAP_NAVIGATION applies to item up/down actions, including
+# configured aliases (default 1). Down from the last row wraps to the
+# first, and Up from the first wraps to the last; 0 retains bounded
+# movement.
 # Toggle, All, and Clear bindings apply only to multiselect and dependencies.
 # Back applies to pick_select, pick_multiselect, and pick_dependencies.
 #
@@ -81,7 +85,7 @@
 #   omits colors while supported bold title and dim hint remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
 # The API uses one active PICK_* state in the calling Bash process.
-PICK_VERSION="0.5.0"
+PICK_VERSION="0.6.0"
 
 PICK_ID=()
 PICK_LABEL=()
@@ -91,6 +95,7 @@ PICK_GROUP_LABEL=()
 PICK_GROUP_PARENT=()
 PICK_MAX_GROUP_DEPTH=8
 PICK_GROUP_JUMP_DEPTH=1
+PICK_WRAP_NAVIGATION=1
 PICK_GROUP_TAIL=()
 PICK_SEPARATOR_BEFORE=()
 PICK_SEPARATOR_LABEL=()
