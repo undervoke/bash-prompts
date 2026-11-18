@@ -85,7 +85,7 @@
 #   omits colors while supported bold title and dim hint remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
 # The API uses one active PICK_* state in the calling Bash process.
-PICK_VERSION="0.6.0"
+PICK_VERSION="0.6.1"
 
 PICK_ID=()
 PICK_LABEL=()

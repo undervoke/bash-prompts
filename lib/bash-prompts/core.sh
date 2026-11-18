@@ -20,15 +20,21 @@ pick_trim() {
 }
 
 pick_split_csv() {
+    # Keep per-token normalization in the current shell because dependency
+    # refresh calls it repeatedly; trim spaces/tabs, then trailing newlines
+    # for compatibility with the previous $(pick_trim ...) substitution.
     PICK_SPLIT=()
     local csv=$1 part
     [[ -n $csv ]] || return 0
-    while [[ $csv == *,* ]]; do
+    while true; do
         part=${csv%%,*}
-        PICK_SPLIT[${#PICK_SPLIT[@]}]=$(pick_trim "$part")
+        while [[ $part == ' '* || $part == $'\t'* ]]; do part=${part#?}; done
+        while [[ $part == *' ' || $part == *$'\t' ]]; do part=${part%?}; done
+        while [[ $part == *$'\n' ]]; do part=${part%?}; done
+        PICK_SPLIT[${#PICK_SPLIT[@]}]=$part
+        [[ $csv == *,* ]] || break
         csv=${csv#*,}
     done
-    PICK_SPLIT[${#PICK_SPLIT[@]}]=$(pick_trim "$csv")
 }
 
 pick_find_id() {
