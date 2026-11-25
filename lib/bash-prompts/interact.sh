@@ -29,6 +29,8 @@ pick_interact() {
     PICK_OFFSET=0
     PICK_MSG=
     PICK_FIELD=
+    PICK_ON_TABS=0
+    PICK_CONFIRMING=0
     PICK_NO_WINDOW=0
     PICK_GOT_SIGNAL=
     PICK_PREV_COUNT=0
@@ -62,24 +64,41 @@ pick_interact() {
         ((got != 1)) || { rc=1; break; }
         ((got != 2)) || continue
         pick_key_action "$PICK_PRESSED"
-        pick_page_action
+        if ((PICK_CONFIRMING)); then pick_confirm_action
+        else
+            pick_tab_action
+            pick_page_action
+        fi
         case $PICK_KEY_ACTION in
             up)
                 PICK_MSG=
-                if ((PICK_CURSOR > 0)); then PICK_CURSOR=$((PICK_CURSOR - 1))
+                if ((PICK_ON_TABS)); then
+                    if [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then
+                        PICK_ON_TABS=0
+                        PICK_CURSOR=$((${#PICK_FOCUS[@]} - 1))
+                    fi
+                elif ((PICK_CURSOR > 0)); then PICK_CURSOR=$((PICK_CURSOR - 1))
+                elif ((${#PICK_TAB_GROUPS[@]})); then PICK_ON_TABS=1
                 elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then PICK_CURSOR=$((${#PICK_FOCUS[@]} - 1)); fi
                 ;;
             down)
                 PICK_MSG=
-                if ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)); then PICK_CURSOR=$((PICK_CURSOR + 1))
-                elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then PICK_CURSOR=0; fi
+                if ((PICK_ON_TABS)); then PICK_ON_TABS=0
+                elif ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)); then PICK_CURSOR=$((PICK_CURSOR + 1))
+                elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then
+                    PICK_CURSOR=0
+                    if ((${#PICK_TAB_GROUPS[@]})); then PICK_ON_TABS=1; fi
+                fi
                 ;;
             prev_group) PICK_MSG=; pick_jump_group -1 ;;
             next_group) PICK_MSG=; pick_jump_group 1 ;;
             prev_tab) PICK_MSG=; pick_switch_tab -1 ;;
             next_tab) PICK_MSG=; pick_switch_tab 1 ;;
             toggle) if [[ $PICK_MODE == choices ]]; then pick_change_value; else pick_action toggle; fi ;;
-            next_value) pick_next_value ;;
+            edit) pick_edit_row ;;
+            prev_value) [[ $PICK_MODE != choices ]] || pick_next_value -1 ;;
+            next_value) [[ $PICK_MODE != choices ]] || pick_next_value ;;
+            confirmed) rc=0; break ;;
             all) pick_action all ;;
             clear) pick_action clear ;;
             cancel) rc=1; break ;;
@@ -88,6 +107,7 @@ pick_interact() {
                 if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
                 if [[ $PICK_MODE == dependencies && ${PICK_ALLOW_EMPTY:-0} == 0 && $(pick_sel_count) == 0 ]]; then pick_message "$PICK_STYLE_ERROR" "Check at least one item to submit."
                 elif [[ $PICK_MODE == choices ]] && pick_refuse_choices; then :
+                elif [[ $PICK_MODE == choices && -n ${PICK_CONFIRM_PROMPT-} ]]; then pick_confirm_open
                 else rc=0; break; fi
                 ;;
         esac

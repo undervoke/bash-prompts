@@ -36,13 +36,21 @@ pick_render() {
     pick_term_size
     rows=$PICK_TROWS
     cols=$PICK_TCOLS
+    PICK_AT=$PICK_CURSOR
+    ((!PICK_ON_TABS)) || PICK_AT=-1
     # The inline painter keeps the last column free.
     pick_hint "$((cols - 1))"
+    if ((PICK_CONFIRMING)); then
+        PICK_FRAME=(); PICK_FRAME_STYLE=(); PICK_FRAME_SPANS=()
+        pick_render_confirm "$rows" "$((cols - 1))"
+        pick_paint "$rows" "$cols"
+        return
+    fi
     [[ $PICK_MODE != choices ]] || pick_value_column "$((cols - 1))"
     PICK_WRAPPED=()
     msg_style=$PICK_MSG_STYLE
     if [[ -n $PICK_MSG ]]; then pick_wrap "$PICK_MSG" "$((cols - 1))"
-    elif [[ $PICK_MODE == choices && -z $PICK_FIELD ]]; then
+    elif [[ $PICK_MODE == choices && -z $PICK_FIELD ]] && ((PICK_AT >= 0)); then
         # The focused row's note, when the row has no room for all of it.
         msg_style=$PICK_STYLE_MUTED
         pick_item_line "${PICK_FOCUS[PICK_CURSOR]}" "$PICK_CURSOR"
@@ -87,8 +95,7 @@ pick_render() {
     PICK_FRAME=()
     PICK_FRAME_STYLE=()
     PICK_FRAME_SPANS=()
-    if pick_on_submit_page; then title=${PICK_SUBMIT_PROMPT:-Submit these values?}
-    elif [[ -n ${PICK_PROMPT-} ]]; then title=$PICK_PROMPT
+    if [[ -n ${PICK_PROMPT-} ]]; then title=$PICK_PROMPT
     elif [[ $PICK_MODE == single ]]; then title='Choose one item'
     else title='Select items'; fi
     counter=
@@ -133,6 +140,12 @@ pick_render() {
     done
     ((msg_spacer)) && pick_frame_row ''
     for ((d=0; d<hint_rows; d++)); do pick_frame_row "${PICK_HINT[d]}" "$PICK_STYLE_MUTED"; done
+    pick_paint "$rows" "$cols"
+}
+
+pick_paint() {
+    # $1 = rows, $2 = width; puts the frame on the screen.
+    local rows=$1 cols=$2
     if [[ -n $PICK_PREV_ROWS && ( $rows != "$PICK_PREV_ROWS" || $cols != "$PICK_PREV_COLS" ) ]]; then
         # A resize may reflow the painted lines, so their height is unknown;
         # repaint from a cleared screen instead of erasing by line count.
@@ -161,7 +174,6 @@ pick_render_row() {
             PICK_ROW=${PICK_SEPARATOR_LABEL[${PICK_DREF[d]}]:-'---------------'}
             PICK_ROW_STYLE=$PICK_STYLE_MUTED
             ;;
-        empty) PICK_ROW='No changes.'; PICK_ROW_STYLE=$PICK_STYLE_MUTED ;;
         item) pick_item_line "${PICK_FOCUS[${PICK_DREF[d]}]}" "${PICK_DREF[d]}" ;;
     esac
 }
@@ -188,7 +200,8 @@ pick_group_title() {
 }
 
 pick_tab_line() {
-    # $1 = width; sets PICK_ROW and PICK_ROW_SPANS. The active tab and the
+    # $1 = width; sets PICK_ROW and PICK_ROW_SPANS. The active tab looks
+    # different while the tabs have the focus. The active tab and the
     # submit tab, which is the last one, always show. The neighbors of the
     # active one join while they fit, and < > stand for the tabs left out.
     local cols=$1 n=${#PICK_TAB_GROUPS[@]} k m first last used total grew
@@ -197,7 +210,9 @@ pick_tab_line() {
     for ((k=0; k<n; k++)); do
         pick_group_title "${PICK_TAB_GROUPS[k]}"
         text[k]=" $PICK_TITLE "
-        [[ -n $PICK_STYLE_TAB || $k != "$PICK_TAB_AT" ]] || text[k]="[$PICK_TITLE]"
+        if ((k != PICK_TAB_AT)); then :
+        elif ((PICK_ON_TABS)); then [[ -n $PICK_STYLE_TAB ]] || text[k]="[> $PICK_TITLE]"
+        elif [[ -z $PICK_STYLE_ACTIVE ]]; then text[k]="[$PICK_TITLE]"; fi
         pick_clip "${text[k]}" 9999
         cells[k]=$PICK_WIDTH
         total=$((total + PICK_WIDTH))
@@ -244,7 +259,8 @@ pick_tab_line() {
 pick_add_tab() {
     # $1 = tab, $2 = its text; adds it to PICK_ROW.
     PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW}"
-    if (($1 == PICK_TAB_AT)); then PICK_ROW_SPANS="$PICK_ROW_SPANS TAB"
+    if (($1 == PICK_TAB_AT && PICK_ON_TABS)); then PICK_ROW_SPANS="$PICK_ROW_SPANS TAB"
+    elif (($1 == PICK_TAB_AT)); then PICK_ROW_SPANS="$PICK_ROW_SPANS ACTIVE"
     else PICK_ROW_SPANS="$PICK_ROW_SPANS PLAIN"; fi
     PICK_ROW=$PICK_ROW$2
     PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW} MUTED"
@@ -257,7 +273,7 @@ pick_submit_line() {
     PICK_ROW_STYLE=
     PICK_ROW_SPANS=
     PICK_NOTES=
-    if (($1 == PICK_CURSOR)); then
+    if (($1 == PICK_AT)); then
         PICK_ROW="> $PICK_ROW"
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
     else PICK_ROW="  $PICK_ROW"; fi
@@ -298,7 +314,7 @@ pick_item_line() {
     fi
     [[ -z $why ]] || notes="${notes:+$notes; }$why"
     [[ -z ${PICK_DISABLED[idx]:-} ]] || notes="${notes:+$notes; }${PICK_DISABLED[idx]}"
-    if ((pos == PICK_CURSOR)); then
+    if ((pos == PICK_AT)); then
         PICK_ROW="$indent> "
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
     else PICK_ROW="$indent  "; fi

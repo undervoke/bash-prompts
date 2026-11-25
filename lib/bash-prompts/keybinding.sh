@@ -190,13 +190,13 @@ pick_keybinding() {
 
 pick_keybinding_alone() {
     # One edit row of its own; the caller's rows and groups stay untouched.
-    local PICK_MODE=choices PICK_ALONE=1 PICK_EDIT_FIRST=0 PICK_TABS=0 PICK_TAB= rc=0
+    local PICK_MODE=choices PICK_ALONE=1 PICK_EDIT_FIRST=0 PICK_TABS=0 PICK_TAB= PICK_CONFIRM_PROMPT= rc=0
     local PICK_PROMPT=${PICK_PROMPT:-Choose a key}
     local -a PICK_ID=(key) PICK_LABEL=(Key) PICK_EDIT=(pick_keybinding)
     local -a PICK_NOTE=() PICK_GROUP=() PICK_GROUP_ID=() PICK_GROUP_LABEL=() PICK_GROUP_PARENT=() PICK_GROUP_TAIL=()
     local -a PICK_SEPARATOR_BEFORE=() PICK_SEPARATOR_LABEL=() PICK_DEPS=() PICK_VALID=() PICK_DISABLED=()
     local -a PICK_VALUES=() PICK_CURRENT=() PICK_CHOICE=() PICK_OFF=() PICK_WHILE_OFF=() PICK_RESULT=()
-    local -a PICK_COLUMNS=() PICK_CELLS=() PICK_FORMAT=() PICK_KEYBINDING_DEFAULT=() PICK_KEYBINDING_SCOPE=() PICK_KEYS_NEXT_VALUE=()
+    local -a PICK_COLUMNS=() PICK_CELLS=() PICK_FORMAT=() PICK_KEYBINDING_DEFAULT=() PICK_KEYBINDING_SCOPE=() PICK_KEYS_EDIT=()
     if pick_keybinding_parse "${PICK_VALUE-}" && pick_keybinding_usable; then PICK_CURRENT=("$PICK_KEYBINDING_VALUE")
     else PICK_EDIT_FIRST=1; fi
     pick_prepare_choices || return 2

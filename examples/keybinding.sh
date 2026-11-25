@@ -12,6 +12,7 @@ check_key() {
 PICK_KEYBINDING_CHECK=check_key
 
 PICK_PROMPT='Keys'
+PICK_KEYS_EDIT=(e)
 PICK_COLUMNS=('Action' 'Default' 'Key')
 PICK_ID=(next previous overview capture open close)
 PICK_LABEL=('Next window' 'Previous window' 'Overview' 'Capture the screen' 'Open a file' 'Close a file')

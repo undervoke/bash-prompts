@@ -4,37 +4,59 @@
 pick_hint() {
     # $1 = width; fills PICK_HINT with the active bindings, wrapped to width.
     # Verbs follow the PICK_KEY_HELP order set by pick_prepare_keys.
-    local cols=$1 i seg line= verbs help
+    local cols=$1 i seg line= verbs help move=move turn=value
     if [[ -n $PICK_FIELD ]]; then PICK_HINT=('Enter save  Esc cancel'); return 0; fi
-    if [[ $PICK_MODE == single ]]; then verbs=(up down prev next prev next - - - - select back cancel)
-    elif [[ $PICK_MODE == dependencies ]]; then verbs=(up down prev next prev next toggle - all clear submit back cancel)
-    elif [[ $PICK_MODE == choices ]]; then
-        verbs=(up down prev next prev next change - - - submit back cancel)
-        i=${PICK_FOCUS[PICK_CURSOR]}
-        if pick_on_submit_page; then
-            verbs[6]=choose
-            ((PICK_CURSOR < 2)) || verbs[6]=-
-        elif [[ -n ${PICK_EDIT[i]-} ]]; then
-            verbs[6]=edit
-            if pick_next_allowed "$i"; then pick_format_value "$i" "$PICK_NEXT"; verbs[7]=$PICK_TEXT; fi
-        fi
-    else verbs=(up down prev next prev next toggle - all none submit back cancel); fi
     help=("${PICK_KEY_HELP[@]}")
+    if ((PICK_CONFIRMING)); then
+        move=scroll
+        turn=choose
+        verbs=(up down - - - - prev next select - - - - back back)
+        help[8]=Enter/Space
+    elif [[ $PICK_MODE == single ]]; then verbs=(up down prev next prev next - - - - - - select back cancel)
+    elif [[ $PICK_MODE == dependencies ]]; then verbs=(up down prev next prev next - - toggle - all clear submit back cancel)
+    elif [[ $PICK_MODE == choices ]]; then
+        verbs=(up down prev next prev next prev next - - - - submit back cancel)
+        i=${PICK_FOCUS[PICK_CURSOR]}
+        if pick_on_submit_page || [[ -z ${PICK_EDIT[i]-} && ${help[8]} != off ]]; then
+            # Toggle and Edit do the same here.
+            if [[ ${help[9]} != off ]]; then help[8]="${help[8]}/${help[9]}"; fi
+            help[9]=off
+        fi
+        if pick_on_submit_page; then
+            verbs[6]=-; verbs[7]=-; verbs[8]=choose
+        else
+            if [[ -z ${PICK_DISABLED[i]:-} ]] && pick_next_allowed "$i"; then pick_format_value "$i" "$PICK_NEXT"; verbs[8]="$PICK_ARROW $PICK_TEXT"; fi
+            if [[ -n ${PICK_EDIT[i]-} ]]; then
+                verbs[9]=edit
+                ((${#PICK_KEYS_EDIT[@]})) || verbs[8]=edit
+            elif [[ ${help[9]} != off ]]; then verbs[9]=${verbs[8]}; fi
+        fi
+    else verbs=(up down prev next prev next - - toggle - all none submit back cancel); fi
+    if ((PICK_ON_TABS && !PICK_CONFIRMING)); then
+        turn=tab
+        verbs[2]=-; verbs[3]=-; verbs[4]=-; verbs[5]=-; verbs[6]=prev; verbs[7]=next; verbs[8]=-; verbs[9]=-
+        [[ $PICK_MODE != single ]] || verbs[12]=-
+    fi
     # Each pair shares one segment when both its keys are bound.
     if [[ ${help[0]} != off && ${help[1]} != off ]]; then
         verbs[0]=-
-        verbs[1]=move
+        verbs[1]=$move
         help[1]="${help[0]} ${help[1]}"
     fi
-    if [[ ${help[2]} != off && ${help[3]} != off ]]; then
+    if [[ ${verbs[2]} != - && ${help[2]} != off && ${help[3]} != off ]]; then
         verbs[2]=-
         verbs[3]=tab
         help[3]="${help[2]} ${help[3]}"
     fi
-    if [[ ${help[4]} != off && ${help[5]} != off ]]; then
+    if [[ ${verbs[4]} != - && ${help[4]} != off && ${help[5]} != off ]]; then
         verbs[4]=-
         verbs[5]=prev/next
         help[5]="${help[4]} ${help[5]}"
+    fi
+    if [[ ${verbs[6]} != - && ${help[6]} != off && ${help[7]} != off ]]; then
+        verbs[6]=-
+        verbs[7]=$turn
+        help[7]="${help[6]} ${help[7]}"
     fi
     PICK_HINT=()
     for ((i=0; i<${#verbs[@]}; i++)); do
@@ -109,6 +131,8 @@ pick_read_key() {
             '[C'|'OC') PICK_PRESSED=Right ;;
             '[D'|'OD') PICK_PRESSED=Left ;;
             '[Z') PICK_PRESSED=Shift+Tab ;;
+            '[13;9u'|'[27;9;13~') PICK_PRESSED=Cmd+Enter ;;
+            $'\n'|$'\r') PICK_PRESSED=Option+Enter ;;
             *) PICK_PRESSED= ;;
         esac
     else
@@ -128,7 +152,7 @@ pick_bind_keys() {
     for key in "$@"; do
         [[ $key != ' ' ]] || key=Space
         case $key in
-            Up|Down|Left|Right|Space|Enter|Esc|Tab|Shift+Tab|Backspace|[[:graph:]]) ;;
+            Up|Down|Left|Right|Space|Enter|Esc|Tab|Shift+Tab|Backspace|Cmd+Enter|Option+Enter|[[:graph:]]) ;;
             *) pick_err "invalid key token '$key' for $action"; return 1 ;;
         esac
         found=0
@@ -165,23 +189,23 @@ pick_prepare_keys() {
     fi
     pick_bind_keys prev_group "${PICK_KEYS_PREV_GROUP[@]}" || return 1
     pick_bind_keys next_group "${PICK_KEYS_NEXT_GROUP[@]}" || return 1
-    if [[ $PICK_MODE == single ]]; then
-        pick_bind_keys toggle
+    if [[ $PICK_MODE == choices && $PICK_ALONE == 0 || ${PICK_TABS:-0} == 1 ]]; then
+        pick_bind_keys prev_value "${PICK_KEYS_PREV_VALUE[@]}" || return 1
+        pick_bind_keys next_value "${PICK_KEYS_NEXT_VALUE[@]}" || return 1
+    else
+        pick_bind_keys prev_value
         pick_bind_keys next_value
+    fi
+    if [[ $PICK_MODE == single ]]; then pick_bind_keys toggle
+    else pick_bind_keys toggle "${PICK_KEYS_TOGGLE[@]}" || return 1; fi
+    if [[ $PICK_MODE == choices ]]; then pick_bind_keys edit "${PICK_KEYS_EDIT[@]}" || return 1
+    else pick_bind_keys edit; fi
+    if [[ $PICK_MODE == single || $PICK_MODE == choices ]]; then
         pick_bind_keys all
         pick_bind_keys clear
     else
-        pick_bind_keys toggle "${PICK_KEYS_TOGGLE[@]}" || return 1
-        if [[ $PICK_MODE == choices ]] && ((PICK_EDITS)); then
-            pick_bind_keys next_value "${PICK_KEYS_NEXT_VALUE[@]}" || return 1
-        else pick_bind_keys next_value; fi
-        if [[ $PICK_MODE == choices ]]; then
-            pick_bind_keys all
-            pick_bind_keys clear
-        else
-            pick_bind_keys all "${PICK_KEYS_ALL[@]}" || return 1
-            pick_bind_keys clear "${PICK_KEYS_CLEAR[@]}" || return 1
-        fi
+        pick_bind_keys all "${PICK_KEYS_ALL[@]}" || return 1
+        pick_bind_keys clear "${PICK_KEYS_CLEAR[@]}" || return 1
     fi
     pick_bind_keys submit "${PICK_KEYS_SUBMIT[@]}" || return 1
     if [[ $PICK_MODE == dependencies && ${PICK_ALLOW_BACK:-0} == 0 ]]; then pick_bind_keys back

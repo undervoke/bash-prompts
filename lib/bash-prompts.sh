@@ -36,17 +36,20 @@
 #     Only PICK_OFF values can override it while it applies. With prerequisites
 #     on, a choice of this value falls back to the first value in PICK_VALUES.
 #   PICK_RESULT[i]  output: value in effect after prerequisites.
-#   PICK_EDIT[i]    function that Toggle runs with the row index, such as
+#   PICK_EDIT[i]    function that Edit runs with the row index, such as
 #     pick_keybinding. It reads and sets PICK_VALUE and returns 0 to change the
 #     row. PICK_VALUES are then fixed values beside the edited one, and
 #     PICK_CURRENT and PICK_CHOICE may be any text.
-#   PICK_FORMAT[i]  function that shows the value: sets PICK_TEXT from $1.
+#   PICK_FORMAT[i]  function that shows the value: sets PICK_TEXT from the value
+#     in $1 and the row index in $2.
 #   PICK_SUBMIT_TAB group ID of a root group without items, shown as the last
-#     tab: it lists the rows that change and asks to submit or cancel.
-#   PICK_SUBMIT_PROMPT the prompt while that tab is active.
-#   PICK_REVIEW     function run when that tab opens; reads PICK_RESULT.
-#   PICK_REVIEW_NOTE[i] set by it: the row's note in that tab, where a row that
-#     keeps its value is listed too; unset shows the value a row started from.
+#     tab with a Submit and a Cancel action.
+#   PICK_CONFIRM_PROMPT when set, submission first opens a screen with this
+#     title that lists the rows that change and asks to submit or go back.
+#   PICK_REVIEW     function run before that screen opens; reads PICK_RESULT. A
+#     nonzero status refuses the values with PICK_REVIEW_MESSAGE.
+#   PICK_REVIEW_NOTE[i] set by it: text below the row on that screen, where a
+#     row that keeps its value is then listed too.
 #   PICK_CELLS[i]   tab-separated columns between the label and the value.
 #   PICK_COLUMNS    headers of the label, the cells, and the value.
 # Keys (pick_keybinding, and rows edited by it) additionally use:
@@ -105,13 +108,15 @@
 # Optional keys (arrays; assign after sourcing, each replaces its action's keys):
 #   PICK_KEYS_UP=(Up k)          PICK_KEYS_DOWN=(Down j)
 #   PICK_KEYS_PREV_GROUP=()      PICK_KEYS_NEXT_GROUP=()
-#   PICK_KEYS_PREV_TAB=(Left h)  PICK_KEYS_NEXT_TAB=(Right l)
-#   PICK_KEYS_TOGGLE=(Space)     PICK_KEYS_NEXT_VALUE=(Backspace)
+#   PICK_KEYS_PREV_TAB=('[')     PICK_KEYS_NEXT_TAB=(']')
+#   PICK_KEYS_PREV_VALUE=(Left h) PICK_KEYS_NEXT_VALUE=(Right l)
+#   PICK_KEYS_TOGGLE=(Space)     PICK_KEYS_EDIT=()
 #   PICK_KEYS_ALL=(a)            PICK_KEYS_CLEAR=(n)
 #   PICK_KEYS_SUBMIT=(Enter)     PICK_KEYS_CANCEL=(q Q Esc)
 #   PICK_KEYS_BACK=()
 # Elements are a single printable ASCII character or one of:
-#   Up Down Left Right Space Enter Esc Tab Shift+Tab Backspace.
+#   Up Down Left Right Space Enter Esc Tab Shift+Tab Backspace Cmd+Enter
+#   Option+Enter. A terminal sends Cmd+Enter only when it is set to.
 # Empty arrays disable an action. A key may belong to only one action.
 # Prev/next group focus the first included item of the adjacent group at
 # PICK_GROUP_JUMP_DEPTH; an item above that depth moves to the nearest group
@@ -121,15 +126,16 @@
 # configured aliases (default 1). Down from the last row wraps to the
 # first, and Up from the first wraps to the last; 0 retains bounded
 # movement.
-# Toggle moves a value row to its next value or edits it, and runs an action in
-# the submit tab; Next value applies
-# where a row has an edit function. All and Clear bindings apply only to
+# Prev/next value and Toggle move a value row through its values. Edit runs its
+# edit function, and on other rows does what Toggle does; without Edit keys
+# Toggle edits. Both run an action in the submit tab. Up from the first row
+# focuses the tabs, where prev/next value move between them. All and Clear bindings apply only to
 # multiselect and dependencies; tab bindings only with PICK_TABS.
 # Back applies to every entry point but pick_run.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
-#   row, reversed active tab, yellow changed value and warning, dim column
-#   headers, notes, read-only rows, separators and key hint, red error and
+#   row, underlined active tab (reversed while the tabs have the focus), yellow
+#   changed value and warning, dim column headers, notes, read-only rows, separators and key hint, red error and
 #   shared key. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
 #   capability omits colors while supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end, also
@@ -151,8 +157,10 @@ PICK_GROUP_TAIL=()
 PICK_TABS=0
 PICK_TAB=
 PICK_SUBMIT_TAB=
-PICK_SUBMIT_PROMPT=
+PICK_CONFIRM_PROMPT=
 PICK_REVIEW=
+PICK_REVIEW_NOTE=()
+PICK_REVIEW_MESSAGE=
 PICK_SEPARATOR_BEFORE=()
 PICK_SEPARATOR_LABEL=()
 PICK_DEPS=()
@@ -208,7 +216,15 @@ PICK_TAB_CURSOR=()
 PICK_TAB_OFFSET=()
 PICK_TAB_AT=0
 PICK_SUBMIT_GROUP=-1
-PICK_REVIEW_NOTE=()
+PICK_ON_TABS=0
+PICK_AT=0
+PICK_CONFIRMING=0
+PICK_CONFIRM_AT=0
+PICK_CONFIRM_OFFSET=0
+PICK_CONFIRM_COLS=
+PICK_CONFIRM_LINE=()
+PICK_CONFIRM_STYLE=()
+PICK_CONFIRM_SPANS=()
 PICK_DEP_ROWS=()
 PICK_ON=()
 PICK_MISSING=()
@@ -230,6 +246,8 @@ PICK_EDITS=0
 PICK_EDIT_FIRST=0
 PICK_ALONE=0
 PICK_KEY_ROWS=()
+PICK_KEPT_ROW=()
+PICK_KEPT_TEXT=()
 PICK_KEY=()
 PICK_HELD=()
 PICK_HELD_AS=()
@@ -263,6 +281,7 @@ PICK_SCREEN_EXIT=
 PICK_CLIPPED=
 PICK_WIDTH=0
 PICK_ELLIPSIS=
+PICK_ARROW=
 PICK_WRAPPED=()
 PICK_NOTES=
 PICK_LINE=
@@ -281,6 +300,7 @@ PICK_STYLE_TITLE=
 PICK_STYLE_PLAIN=
 PICK_STYLE_GROUP=
 PICK_STYLE_TAB=
+PICK_STYLE_ACTIVE=
 PICK_STYLE_CHANGED=
 PICK_STYLE_FOCUS=
 PICK_STYLE_MUTED=
@@ -305,10 +325,12 @@ PICK_KEYS_UP=(Up k)
 PICK_KEYS_DOWN=(Down j)
 PICK_KEYS_PREV_GROUP=()
 PICK_KEYS_NEXT_GROUP=()
-PICK_KEYS_PREV_TAB=(Left h)
-PICK_KEYS_NEXT_TAB=(Right l)
+PICK_KEYS_PREV_TAB=('[')
+PICK_KEYS_NEXT_TAB=(']')
+PICK_KEYS_PREV_VALUE=(Left h)
+PICK_KEYS_NEXT_VALUE=(Right l)
 PICK_KEYS_TOGGLE=(Space)
-PICK_KEYS_NEXT_VALUE=(Backspace)
+PICK_KEYS_EDIT=()
 PICK_KEYS_ALL=(a)
 PICK_KEYS_CLEAR=(n)
 PICK_KEYS_SUBMIT=(Enter)
@@ -330,6 +352,7 @@ source "$_BASH_PROMPTS_DIR/bash-prompts/core.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/groups.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/selection.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/choices.sh" || return 1
+source "$_BASH_PROMPTS_DIR/bash-prompts/confirm.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/keybinding.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/capture.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/terminal.sh" || return 1

@@ -19,6 +19,8 @@ pick_prepare_choices() {
     PICK_DEP_ROWS=()
     PICK_EDITS=0
     PICK_KEY_ROWS=()
+    PICK_KEPT_ROW=()
+    PICK_KEPT_TEXT=()
     PICK_HELD_AS=()
     PICK_CLASH=()
     PICK_CELL_COUNT=0
@@ -30,6 +32,8 @@ pick_prepare_choices() {
         [[ -n ${PICK_CHOICE[i]+set} ]] || PICK_CHOICE[i]=${PICK_CURRENT[i]}
         if [[ -n ${PICK_EDIT[i]-} ]]; then
             PICK_EDITS=1
+            pick_keep "$i" "${PICK_CURRENT[i]}"
+            pick_keep "$i" "${PICK_CHOICE[i]}"
         else
             for value in "${PICK_CURRENT[i]}" "${PICK_CHOICE[i]}"; do
                 if ! pick_csv_has "$value" "${PICK_VALUES[i]}"; then
@@ -124,35 +128,50 @@ pick_value_allowed() {
     [[ ${PICK_WITHDRAWN[$1]} == 0 && $2 == "${PICK_CURRENT[$1]}" ]]
 }
 
-pick_next_allowed() {
-    # $1 = row; sets PICK_NEXT to the value after the one in effect, or to
-    # nothing when the row has no other value to take. An edit row also goes
-    # back to the text it started from.
-    local idx=$1 k n at=0
-    PICK_NEXT=
-    pick_split_csv "${PICK_VALUES[idx]-}"
-    if [[ -n ${PICK_EDIT[idx]-} ]]; then
-        at=-1
-        if pick_can_return "$idx"; then PICK_SPLIT[${#PICK_SPLIT[@]}]=${PICK_CURRENT[idx]}; fi
+pick_keep() {
+    # $1 = edit row, $2 = text; keeps it among the row's values, after the
+    # fixed ones. A key row keeps only what could be entered.
+    local k
+    ! pick_csv_has "$2" "${PICK_VALUES[$1]-}" || return 0
+    if [[ ${PICK_EDIT[$1]} == pick_keybinding ]]; then
+        pick_keybinding_parse "$2" && pick_keybinding_usable || return 0
     fi
+    for ((k=0; k<${#PICK_KEPT_ROW[@]}; k++)); do
+        [[ ${PICK_KEPT_ROW[k]} != "$1" || ${PICK_KEPT_TEXT[k]} != "$2" ]] || return 0
+    done
+    PICK_KEPT_ROW[k]=$1
+    PICK_KEPT_TEXT[k]=$2
+}
+
+pick_row_values() {
+    # $1 = row; fills PICK_SPLIT with the values it moves through.
+    local k
+    pick_split_csv "${PICK_VALUES[$1]-}"
+    [[ -n ${PICK_EDIT[$1]-} ]] || return 0
+    for ((k=0; k<${#PICK_KEPT_ROW[@]}; k++)); do
+        [[ ${PICK_KEPT_ROW[k]} != "$1" ]] || PICK_SPLIT[${#PICK_SPLIT[@]}]=${PICK_KEPT_TEXT[k]}
+    done
+}
+
+pick_next_allowed() {
+    # $1 = row, $2 = -1 to go backwards; sets PICK_NEXT to the value after
+    # the one in effect, or to nothing when the row has no other to take.
+    local idx=$1 dir=${2:-1} k n at=-1 to
+    PICK_NEXT=
+    pick_row_values "$idx"
     n=${#PICK_SPLIT[@]}
     for ((k=0; k<n; k++)); do
         [[ ${PICK_SPLIT[k]} != "${PICK_RESULT[idx]}" ]] || at=$k
     done
     for ((k=1; k<n + (at < 0); k++)); do
-        pick_value_allowed "$idx" "${PICK_SPLIT[(at + k) % n]}" || continue
-        PICK_NEXT=${PICK_SPLIT[(at + k) % n]}
+        if ((at >= 0)); then to=$(((at + dir * k + n * k) % n))
+        elif ((dir > 0)); then to=$((k - 1))
+        else to=$((n - k)); fi
+        pick_value_allowed "$idx" "${PICK_SPLIT[to]}" || continue
+        PICK_NEXT=${PICK_SPLIT[to]}
         return 0
     done
     return 1
-}
-
-pick_can_return() {
-    # $1 = edit row. Whether the value it started from can be taken again
-    # without entering it: not when that is a fixed value already, and for a
-    # key row only when it is a key.
-    ! pick_csv_has "${PICK_CURRENT[$1]}" "${PICK_VALUES[$1]-}" || return 1
-    [[ ${PICK_EDIT[$1]} != pick_keybinding ]] || pick_keybinding_parse "${PICK_CURRENT[$1]}"
 }
 
 pick_missing_names() {
@@ -176,32 +195,49 @@ pick_row_names() {
 }
 
 pick_change_value() {
+    # Toggle: without an Edit key it edits a row that can be edited.
+    local idx=${PICK_FOCUS[PICK_CURSOR]}
+    if [[ -n ${PICK_EDIT[idx]-} ]] && ((${#PICK_KEYS_EDIT[@]} == 0)); then pick_edit_value "$idx"
+    else pick_next_value; fi
+}
+
+pick_edit_row() {
     local idx=${PICK_FOCUS[PICK_CURSOR]}
     if [[ -n ${PICK_EDIT[idx]-} ]]; then pick_edit_value "$idx"
     else pick_next_value; fi
 }
 
+pick_tab_action() {
+    # With the focus on the tabs, Left and Right move between them, and an
+    # action on a row goes to the rows first.
+    ((PICK_ON_TABS)) || return 0
+    case $PICK_KEY_ACTION in
+        prev_value) PICK_KEY_ACTION=prev_tab ;;
+        next_value) PICK_KEY_ACTION=next_tab ;;
+        toggle|edit) PICK_KEY_ACTION=down ;;
+        prev_group|next_group) PICK_ON_TABS=0 ;;
+        submit) [[ $PICK_MODE != single ]] || PICK_KEY_ACTION=down ;;
+    esac
+}
+
 pick_page_action() {
-    # On the submit page Toggle runs the focused action, and the rows below
-    # the actions are only read.
+    # On the submit page Toggle and Edit run the focused action.
     pick_on_submit_page || return 0
     case $PICK_KEY_ACTION in
-        toggle)
-            case $PICK_CURSOR in
-                0) PICK_KEY_ACTION=submit ;;
-                1) PICK_KEY_ACTION=cancel ;;
-                *) PICK_KEY_ACTION= ;;
-            esac
+        toggle|edit)
+            if ((PICK_CURSOR == 0)); then PICK_KEY_ACTION=submit
+            else PICK_KEY_ACTION=cancel; fi
             ;;
-        next_value) PICK_KEY_ACTION= ;;
+        prev_value|next_value) PICK_KEY_ACTION= ;;
     esac
 }
 
 pick_next_value() {
+    # $1 = -1 to go backwards.
     local idx=${PICK_FOCUS[PICK_CURSOR]}
     PICK_MSG=
     if [[ -n ${PICK_DISABLED[idx]:-} ]]; then pick_message "$PICK_STYLE_ERROR" "${PICK_DISABLED[idx]}"; return 0; fi
-    if ! pick_next_allowed "$idx"; then
+    if ! pick_next_allowed "$idx" "${1-}"; then
         pick_missing_names "$idx"
         [[ -z $PICK_DEPNAMES ]] || pick_message "$PICK_STYLE_ERROR" "${PICK_LABEL[idx]} requires $PICK_DEPNAMES."
         return 0
@@ -230,6 +266,7 @@ pick_take_value() {
     local idx=$1 i also= notes=
     local -a before=("${PICK_RESULT[@]}")
     PICK_CHOICE[idx]=$2
+    [[ -z ${PICK_EDIT[idx]-} ]] || pick_keep "$idx" "$2"
     pick_settle
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         [[ $i != "$idx" && ${PICK_RESULT[i]} != "${before[i]}" ]] || continue
@@ -258,7 +295,7 @@ pick_format_value() {
     [[ -n $format || ${PICK_EDIT[$1]-} != pick_keybinding ]] || format=pick_keybinding_format
     PICK_TEXT=$2
     if [[ -z $2 && -n ${PICK_EDIT[$1]-} ]]; then PICK_TEXT=none
-    elif [[ -n $format ]]; then "$format" "$2"; fi
+    elif [[ -n $format ]]; then "$format" "$2" "$1"; fi
 }
 
 pick_split_cells() {
@@ -287,7 +324,7 @@ pick_measure_values() {
         pick_clip "${PICK_LABEL[i]}" 9999
         width=$((PICK_WIDTH + 2 + 2 * (PICK_GLEVEL[g] - PICK_GLEVEL[PICK_ROOT])))
         ((width <= PICK_LABEL_CELLS)) || PICK_LABEL_CELLS=$width
-        if [[ -n ${PICK_CELLS[i]-} ]] && ! pick_on_submit_page; then
+        if [[ -n ${PICK_CELLS[i]-} ]]; then
             PICK_HEADED=1
             pick_split_cells "${PICK_CELLS[i]}"
             for ((k=0; k<${#PICK_SPLIT_CELLS[@]}; k++)); do
@@ -299,7 +336,7 @@ pick_measure_values() {
         if [[ -n ${PICK_EDIT[i]-} ]]; then
             PICK_HEADED=1
             # The widest key is five modifiers with Space.
-            if [[ ${PICK_EDIT[i]} != pick_keybinding ]]; then PICK_SPLIT[${#PICK_SPLIT[@]}]=${PICK_RESULT[i]}
+            if [[ ${PICK_EDIT[i]} != pick_keybinding ]]; then pick_row_values "$i"
             elif ((PICK_VALUE_CELLS < 11)); then PICK_VALUE_CELLS=11; fi
         fi
         for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
@@ -309,7 +346,7 @@ pick_measure_values() {
             ((PICK_WIDTH <= PICK_VALUE_CELLS)) || PICK_VALUE_CELLS=$PICK_WIDTH
         done
     done
-    if ((${#PICK_COLUMNS[@]} == 0)) || pick_on_submit_page; then PICK_HEADED=0; fi
+    if ((${#PICK_COLUMNS[@]} == 0)); then PICK_HEADED=0; fi
     ((PICK_HEADED)) || return 0
     pick_clip "${PICK_COLUMNS[0]-}" 9999
     ((PICK_WIDTH + 2 <= PICK_LABEL_CELLS)) || PICK_LABEL_CELLS=$((PICK_WIDTH + 2))
@@ -393,7 +430,6 @@ pick_column_line() {
 pick_value_line() {
     # $1 = row, $2 = focus position, $3 = indent. Also sets PICK_NOTES.
     local idx=$1 notes=${PICK_NOTE[$1]-} role=PLAIN lead="$3  "
-    ! pick_on_submit_page || notes=${PICK_REVIEW_NOTE[idx]}
     # Neither changes until a value does.
     if [[ -z ${PICK_SHOWN[idx]+set} ]]; then
         pick_format_value "$idx" "${PICK_RESULT[idx]}"
@@ -412,7 +448,7 @@ pick_value_line() {
         PICK_ROW_STYLE=$PICK_STYLE_MUTED
         role=MUTED
     fi
-    if (($2 == PICK_CURSOR)); then
+    if (($2 == PICK_AT)); then
         lead="$3> "
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
     fi

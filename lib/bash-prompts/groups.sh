@@ -226,8 +226,6 @@ pick_build_submit_tab() {
         return 1
     fi
     PICK_SUBMIT_GROUP=$g
-    # Its page starts at the left, like the root groups it lists.
-    PICK_GLEVEL[g]=0
     PICK_GCHILDREN[g]=
     for ((i=n; i<n+2; i++)); do PICK_IGROUP[i]=$g; done
     PICK_TAB_GROUPS[${#PICK_TAB_GROUPS[@]}]=$g
@@ -235,26 +233,6 @@ pick_build_submit_tab() {
 
 pick_on_submit_page() {
     ((PICK_ROOT == PICK_SUBMIT_GROUP))
-}
-
-pick_walk_submit_page() {
-    # Fills PICK_FOCUS with the two actions, the rows that change, and those
-    # the review has a note for.
-    local i n=${#PICK_LABEL[@]}
-    local -a rows
-    pick_walk_group 0
-    rows=("${PICK_FOCUS[@]}")
-    PICK_FOCUS=("$n" "$((n + 1))")
-    PICK_REVIEW_NOTE=()
-    [[ -z ${PICK_REVIEW-} ]] || "$PICK_REVIEW"
-    for i in "${rows[@]}"; do
-        if [[ -z ${PICK_REVIEW_NOTE[i]-} ]]; then
-            [[ ${PICK_RESULT[i]} != "${PICK_CURRENT[i]}" ]] || continue
-            pick_format_value "$i" "${PICK_CURRENT[i]}"
-            PICK_REVIEW_NOTE[i]="was $PICK_TEXT"
-        fi
-        PICK_FOCUS[${#PICK_FOCUS[@]}]=$i
-    done
 }
 
 pick_switch_tab() {
@@ -268,13 +246,12 @@ pick_switch_tab() {
     pick_build_rows
     PICK_CURSOR=${PICK_TAB_CURSOR[PICK_TAB_AT]:-0}
     PICK_OFFSET=${PICK_TAB_OFFSET[PICK_TAB_AT]:-0}
-    # The rows of the submit page differ each time.
-    if pick_on_submit_page; then PICK_CURSOR=0; PICK_OFFSET=0; fi
 }
 
 pick_focus_row() {
     # $1 = item index; focuses it, in its tab.
     local idx=$1 k
+    PICK_ON_TABS=0
     if ((${#PICK_TAB_GROUPS[@]})); then
         pick_ref_group "$idx" 1
         for ((k=0; k<${#PICK_TAB_GROUPS[@]}; k++)); do
@@ -292,7 +269,7 @@ pick_build_rows() {
     local i j g k s common context level count spaced=0
     local -a path=() previous=() reverse=()
     PICK_FOCUS=(); PICK_FOCUS_ROW=(); PICK_DKIND=(); PICK_DREF=(); PICK_DGROUP=()
-    if pick_on_submit_page; then pick_walk_submit_page
+    if pick_on_submit_page; then PICK_FOCUS=("${#PICK_LABEL[@]}" "$((${#PICK_LABEL[@]} + 1))")
     else pick_walk_group "$PICK_ROOT"; fi
     [[ $PICK_MODE != choices ]] || pick_measure_values
     # Blank rows set groups apart; the only group of a tab is already apart.
@@ -320,8 +297,7 @@ pick_build_rows() {
         ((common == 0)) || context=${path[common - 1]}
         count=${#PICK_DKIND[@]}
         for ((s=0; s<${#PICK_SEP_ANCHOR[@]}; s++)); do
-            [[ ${PICK_SEP_ANCHOR[s]} == "$i" ]] && ! pick_on_submit_page || continue
-            pick_display_row separator "$s" "$context"
+            [[ ${PICK_SEP_ANCHOR[s]} != "$i" ]] || pick_display_row separator "$s" "$context"
         done
         if ((k > 0 && count == ${#PICK_DKIND[@]})) &&
            [[ ${previous[spaced]:-0} != "${path[spaced]:-0}" ]]; then
@@ -337,13 +313,7 @@ pick_build_rows() {
         pick_display_row item "$k" "${PICK_IGROUP[i]}"
         previous=("${path[@]}")
     done
-    if pick_on_submit_page; then
-        if ((${#PICK_FOCUS[@]} == 2)); then
-            pick_display_row blank '' "$PICK_ROOT"
-            pick_display_row empty '' "$PICK_ROOT"
-        fi
-        return 0
-    fi
+    ! pick_on_submit_page || return 0
     for ((s=0; s<${#PICK_SEP_ANCHOR[@]}; s++)); do
         [[ ${PICK_SEP_ANCHOR[s]} != -1 ]] || pick_display_row separator "$s" "$PICK_ROOT"
     done
