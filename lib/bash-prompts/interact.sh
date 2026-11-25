@@ -122,6 +122,8 @@ pick_interact() {
                 ;;
             prev_group) PICK_MSG=; pick_jump_group -1 ;;
             next_group) PICK_MSG=; pick_jump_group 1 ;;
+            prev_tab) PICK_MSG=; pick_switch_tab -1 ;;
+            next_tab) PICK_MSG=; pick_switch_tab 1 ;;
             toggle) pick_action toggle ;;
             all) pick_action all ;;
             clear) pick_action clear ;;

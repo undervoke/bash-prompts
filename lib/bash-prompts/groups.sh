@@ -86,8 +86,7 @@ pick_separator() {
 }
 
 pick_build_focus() {
-    local i j g parent id k s common context level count
-    local -a path=() previous=() reverse=()
+    local i g parent id s
     case ${PICK_MAX_GROUP_DEPTH-} in
         ''|*[!0-9]*) pick_err 'PICK_MAX_GROUP_DEPTH must be a positive integer'; return 1 ;;
     esac
@@ -110,8 +109,7 @@ pick_build_focus() {
     PICK_GID=(''); PICK_GLABEL=(''); PICK_GPARENT=(-1)
     PICK_GDEPTH=(0); PICK_GLEVEL=(0)
     PICK_GCHILDREN=(''); PICK_GLINKED=(1); PICK_GROW=(-1)
-    PICK_IGROUP=(); PICK_SEP_ANCHOR=(); PICK_FOCUS=()
-    PICK_FOCUS_ROW=(); PICK_DKIND=(); PICK_DREF=(); PICK_DGROUP=()
+    PICK_IGROUP=(); PICK_SEP_ANCHOR=()
     for ((i=0; i<${#PICK_GROUP_ID[@]}; i++)); do
         id=${PICK_GROUP_ID[i]}
         pick_group_index "$id"
@@ -171,7 +169,71 @@ pick_build_focus() {
         fi
         PICK_SEP_ANCHOR[s]=$i
     done
-    pick_walk_group 0
+    pick_build_tabs || return 1
+    pick_build_rows
+}
+
+pick_build_tabs() {
+    # With PICK_TABS, the root groups become tabs in their display order and
+    # the rows of one of them are shown at a time.
+    local node g i IFS=' '
+    local -a tail=()
+    PICK_TAB_GROUPS=(); PICK_TAB_CURSOR=(); PICK_TAB_OFFSET=()
+    PICK_TAB_AT=0
+    PICK_ROOT=0
+    [[ ${PICK_TABS:-0} == 1 ]] || return 0
+    for node in ${PICK_GCHILDREN[0]}; do
+        case $node in
+            g*)
+                g=${node#g}
+                if pick_group_is_tail "${PICK_GID[g]}"; then tail[${#tail[@]}]=$g
+                else PICK_TAB_GROUPS[${#PICK_TAB_GROUPS[@]}]=$g; fi
+                ;;
+            i*)
+                i=${node#i}
+                pick_err "item '${PICK_ID[i]-${PICK_LABEL[i]}}' needs a group to appear in a tab"
+                return 1
+                ;;
+        esac
+    done
+    for g in "${tail[@]}"; do PICK_TAB_GROUPS[${#PICK_TAB_GROUPS[@]}]=$g; done
+    ((${#PICK_TAB_GROUPS[@]})) || return 0
+    for ((i=0; i<${#PICK_TAB_GROUPS[@]}; i++)); do
+        [[ ${PICK_GID[${PICK_TAB_GROUPS[i]}]} != "${PICK_TAB-}" ]] || PICK_TAB_AT=$i
+    done
+    if [[ $PICK_MODE == single ]] && ((PICK_INITIAL_INDEX >= 0)); then
+        pick_ref_group "$PICK_INITIAL_INDEX" 1
+        for ((i=0; i<${#PICK_TAB_GROUPS[@]}; i++)); do
+            [[ ${PICK_TAB_GROUPS[i]} != "$PICK_REFGROUP" ]] || PICK_TAB_AT=$i
+        done
+    fi
+    PICK_ROOT=${PICK_TAB_GROUPS[PICK_TAB_AT]}
+    PICK_TAB=${PICK_GID[PICK_ROOT]}
+    return 0
+}
+
+pick_switch_tab() {
+    # $1 = -1 for the previous tab, 1 for the next; each tab keeps its focus.
+    local n=${#PICK_TAB_GROUPS[@]}
+    PICK_TAB_CURSOR[PICK_TAB_AT]=$PICK_CURSOR
+    PICK_TAB_OFFSET[PICK_TAB_AT]=$PICK_OFFSET
+    PICK_TAB_AT=$(((PICK_TAB_AT + $1 + n) % n))
+    PICK_ROOT=${PICK_TAB_GROUPS[PICK_TAB_AT]}
+    PICK_TAB=${PICK_GID[PICK_ROOT]}
+    pick_build_rows
+    PICK_CURSOR=${PICK_TAB_CURSOR[PICK_TAB_AT]:-0}
+    PICK_OFFSET=${PICK_TAB_OFFSET[PICK_TAB_AT]:-0}
+}
+
+pick_build_rows() {
+    local i j g k s common context level count spaced=0
+    local -a path=() previous=() reverse=()
+    PICK_FOCUS=(); PICK_FOCUS_ROW=(); PICK_DKIND=(); PICK_DREF=(); PICK_DGROUP=()
+    pick_walk_group "$PICK_ROOT"
+    # Blank rows set groups apart; the only group of a tab is already apart.
+    if ((PICK_ROOT)); then
+        case ${PICK_GCHILDREN[PICK_ROOT]} in ' g'*' '*) ;; ' g'*) spaced=1 ;; esac
+    fi
 
     # A separator precedes its item and any newly entered headers. Its
     # context is the common ancestor, so it creates no group or indentation.
@@ -179,7 +241,7 @@ pick_build_focus() {
         i=${PICK_FOCUS[k]}
         g=${PICK_IGROUP[i]}
         reverse=(); path=()
-        while ((g > 0)); do
+        while ((g > 0 && g != PICK_ROOT)); do
             reverse[${#reverse[@]}]=$g
             g=${PICK_GPARENT[g]}
         done
@@ -189,15 +251,15 @@ pick_build_focus() {
               [[ ${path[common]} == "${previous[common]}" ]]; do
             common=$((common + 1))
         done
-        context=0
+        context=$PICK_ROOT
         ((common == 0)) || context=${path[common - 1]}
         count=${#PICK_DKIND[@]}
         for ((s=0; s<${#PICK_SEP_ANCHOR[@]}; s++)); do
             [[ ${PICK_SEP_ANCHOR[s]} != "$i" ]] || pick_display_row separator "$s" "$context"
         done
         if ((k > 0 && count == ${#PICK_DKIND[@]})) &&
-           [[ ${previous[0]:-0} != "${path[0]:-0}" ]]; then
-            pick_display_row blank '' 0
+           [[ ${previous[spaced]:-0} != "${path[spaced]:-0}" ]]; then
+            pick_display_row blank '' "$context"
         fi
         for ((level=common; level<${#path[@]}; level++)); do
             g=${path[level]}
@@ -210,7 +272,7 @@ pick_build_focus() {
         previous=("${path[@]}")
     done
     for ((s=0; s<${#PICK_SEP_ANCHOR[@]}; s++)); do
-        [[ ${PICK_SEP_ANCHOR[s]} != -1 ]] || pick_display_row separator "$s" 0
+        [[ ${PICK_SEP_ANCHOR[s]} != -1 ]] || pick_display_row separator "$s" "$PICK_ROOT"
     done
     return 0
 }
@@ -219,7 +281,7 @@ pick_group_counts() {
     local want=$1 i g
     PICK_GTOT=0
     PICK_GSEL=0
-    for i in "${PICK_FOCUS[@]}"; do
+    for i in "${!PICK_IGROUP[@]}"; do
         g=${PICK_IGROUP[i]}
         while ((g > 0 && g != want)); do g=${PICK_GPARENT[g]}; done
         ((g == want)) || continue

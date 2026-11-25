@@ -117,6 +117,7 @@ pick_prepare_styles() {
     local bold colors
     PICK_STYLE_TITLE=; PICK_STYLE_GROUP=; PICK_STYLE_FOCUS=; PICK_STYLE_MUTED=
     PICK_STYLE_WARNING=; PICK_STYLE_ERROR=; PICK_STYLE_RESET=
+    PICK_STYLE_TAB=
     [[ -z ${NO_COLOR-} && ${TERM-} != dumb ]] || return 0
     PICK_STYLE_RESET=$(tput sgr0 2>/dev/null) || { PICK_STYLE_RESET=; return 0; }
     [[ -n $PICK_STYLE_RESET ]] || return 0
@@ -125,6 +126,7 @@ pick_prepare_styles() {
     PICK_STYLE_TITLE=$bold
     PICK_STYLE_FOCUS=$bold
     PICK_STYLE_MUTED=$(tput dim 2>/dev/null || true)
+    PICK_STYLE_TAB=$(tput rev 2>/dev/null || true)
     colors=$(tput colors 2>/dev/null) || return 0
     case $colors in ''|*[!0-9]*) return 0 ;; esac
     ((colors >= 8)) || return 0
@@ -137,15 +139,16 @@ pick_prepare_styles() {
 
 pick_clip() {
     # $1 = text, $2 = cells; sets PICK_CLIPPED to the longest prefix that
-    # fits. Each painted element must stay one physical row, because inline
+    # fits and PICK_CELLS to its width. Each painted element must stay one physical row, because inline
     # repainting moves up by element count. Non-ASCII text is measured in
     # UTF-8 bytes: characters from U+2000 up (CJK, Hangul, kana, fullwidth
     # forms, emoji, and ambiguous-width symbols) count as two cells. Narrow
     # ones among them are overcounted, which clips early but never wraps.
     local text=$1 max=$2
-    if ((max <= 0)); then PICK_CLIPPED=; return 0; fi
+    if ((max <= 0)); then PICK_CLIPPED=; PICK_CELLS=0; return 0; fi
     if [[ $text != *[![:ascii:]]* ]]; then
         PICK_CLIPPED=${text:0:$max}
+        PICK_CELLS=${#PICK_CLIPPED}
         return 0
     fi
     local LC_ALL=C
@@ -168,6 +171,7 @@ pick_clip() {
         i=$((i + len))
     done
     PICK_CLIPPED=${text:0:i}
+    PICK_CELLS=$w
 }
 
 pick_wrap() {
@@ -190,15 +194,22 @@ pick_wrap() {
 
 pick_paint_line() {
     # Styles PICK_CLIPPED, the text of frame row $1, into PICK_LINE: the
-    # row's own style up to its tail offset, then muted.
-    local line=$PICK_CLIPPED tail= style=${PICK_FRAME_STYLE[$1]-} at=${PICK_FRAME_TAIL[$1]-}
-    if [[ -n $at ]] && ((at < ${#line})); then
-        tail=${line:at}
-        line=${line:0:at}
-    fi
-    if [[ -n $style && -n $line ]]; then line="$style$line$PICK_STYLE_RESET"; fi
-    if [[ -n $PICK_STYLE_MUTED && -n $tail ]]; then tail="$PICK_STYLE_MUTED$tail$PICK_STYLE_RESET"; fi
-    PICK_LINE=$line$tail
+    # row's own style, then each span's style from its offset on.
+    local text=$PICK_CLIPPED style=${PICK_FRAME_STYLE[$1]-} at=0 k=0 end part IFS=' '
+    local -a spans=(${PICK_FRAME_SPANS[$1]-})
+    PICK_LINE=
+    while true; do
+        end=${spans[k]-${#text}}
+        ((end <= ${#text})) || end=${#text}
+        part=${text:at:end - at}
+        if [[ -n $style && -n $part ]]; then part="$style$part$PICK_STYLE_RESET"; fi
+        PICK_LINE+=$part
+        ((end < ${#text})) || break
+        style=PICK_STYLE_${spans[k + 1]}
+        style=${!style}
+        at=$end
+        k=$((k + 2))
+    done
 }
 
 pick_emit_frame() {

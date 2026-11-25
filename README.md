@@ -89,6 +89,7 @@ Parallel, dense, zero-based arrays describe each row; `PICK_VALUE` is a scalar:
 | `PICK_STATE` | Selected flags (`0`/`1`) for multi-selection, input and output. |
 | `PICK_VALUE` | Initial and submitted ID for single selection. |
 | `PICK_PROMPT` | One line shown above the list. Unset shows a generic title. |
+| `PICK_TABS` / `PICK_TAB` | Tabs over the root groups; see [Tabs](#tabs). |
 
 `pick_multiselect` keeps the incoming selected flags, excludes invalid rows,
 and accepts an empty selection. Dependency arrays do not affect it.
@@ -178,6 +179,18 @@ These arrays can also be assigned directly. Clear the corresponding arrays
 when replacing definitions between prompts; all are initialized empty when
 the library is sourced.
 
+## Tabs
+
+`PICK_TABS=1` shows the root groups as tabs below the prompt, and the rows of
+the active one below them. It applies to every entry point; every included row needs
+a group. One submission covers all tabs. Tabs follow the display order of the
+root groups and each keeps its focus while the prompt is open. `PICK_TAB` is the
+active tab's group ID, input and output; an ID without included rows starts at
+the first tab. Nested groups keep their headers inside a tab.
+
+On a narrow terminal the active tab stays visible and `<` and `>` stand for the
+tabs left out. Without reverse video the active tab is bracketed.
+
 ## Dependency-aware selection
 
 `pick_dependencies` preserves the supplied `PICK_STATE`. Selecting an item adds
@@ -235,6 +248,7 @@ Each part of a prompt has one look, following the text roles of
 | Title | Bold cyan |
 | Group header | Cyan |
 | Focused row | Bold |
+| Active tab | Reverse video |
 | Note, read-only row, separator, key hint | Dim |
 | Message that other rows were unchecked too | Yellow |
 | Message that refuses an action | Red |
@@ -247,7 +261,8 @@ produces plain text; without color capability only bold and dim apply.
 All interactive APIs read their active bindings at the start of each call.
 Single selection uses Up, Down, Submit, Back, and Cancel; multi-selection
 also uses Toggle, All, and Clear. Prev/next group jumps are available in every
-interactive API when bound. `pick_dependencies` supports Back; the
+interactive API when bound, and prev/next tab with `PICK_TABS=1`.
+`pick_dependencies` supports Back; the
 compatibility entry point `pick_run` leaves it unbound.
 Defaults are initialized when the library is sourced:
 
@@ -256,6 +271,8 @@ PICK_KEYS_UP=(Up k)
 PICK_KEYS_DOWN=(Down j)
 PICK_KEYS_PREV_GROUP=()
 PICK_KEYS_NEXT_GROUP=()
+PICK_KEYS_PREV_TAB=(Left h)
+PICK_KEYS_NEXT_TAB=(Right l)
 PICK_KEYS_TOGGLE=(Space)
 PICK_KEYS_ALL=(a)
 PICK_KEYS_CLEAR=(n)
@@ -304,6 +321,8 @@ The hint below the list shows the active bindings, and a message appears above i
 `pick_dependencies` uses the dependency actions above, accepts an empty Submit,
 and returns `3` on Back with the current flags. Read-only checkbox states are
 preserved by Toggle, All, Clear, and dependent deselection.
+
+Prev/next tab keys wrap around.
 
 A lone Esc takes effect after 0.1 seconds, which distinguishes it from an
 escape sequence.

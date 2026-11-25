@@ -5,11 +5,11 @@ pick_hint() {
     # $1 = width; fills PICK_HINT with the active bindings, wrapped to width.
     # Verbs follow the PICK_KEY_HELP order set by pick_prepare_keys.
     local cols=$1 i seg line= verbs help
-    if [[ $PICK_MODE == single ]]; then verbs=(up down prev next - - - select back cancel)
-    elif [[ $PICK_MODE == dependencies ]]; then verbs=(up down prev next toggle all clear submit back cancel)
-    else verbs=(up down prev next toggle all none submit back cancel); fi
+    if [[ $PICK_MODE == single ]]; then verbs=(up down prev next prev next - - - select back cancel)
+    elif [[ $PICK_MODE == dependencies ]]; then verbs=(up down prev next prev next toggle all clear submit back cancel)
+    else verbs=(up down prev next prev next toggle all none submit back cancel); fi
     help=("${PICK_KEY_HELP[@]}")
-    # Up/Down and Prev/Next group each share one segment when both are bound.
+    # Each pair shares one segment when both its keys are bound.
     if [[ ${help[0]} != off && ${help[1]} != off ]]; then
         verbs[0]=-
         verbs[1]=move
@@ -17,8 +17,13 @@ pick_hint() {
     fi
     if [[ ${help[2]} != off && ${help[3]} != off ]]; then
         verbs[2]=-
-        verbs[3]=prev/next
+        verbs[3]=tab
         help[3]="${help[2]} ${help[3]}"
+    fi
+    if [[ ${help[4]} != off && ${help[5]} != off ]]; then
+        verbs[4]=-
+        verbs[5]=prev/next
+        help[5]="${help[4]} ${help[5]}"
     fi
     PICK_HINT=()
     for ((i=0; i<${#verbs[@]}; i++)); do
@@ -75,6 +80,13 @@ pick_prepare_keys() {
     PICK_KEY_HELP=()
     pick_bind_keys up "${PICK_KEYS_UP[@]}" || return 1
     pick_bind_keys down "${PICK_KEYS_DOWN[@]}" || return 1
+    if [[ ${PICK_TABS:-0} == 1 ]]; then
+        pick_bind_keys prev_tab "${PICK_KEYS_PREV_TAB[@]}" || return 1
+        pick_bind_keys next_tab "${PICK_KEYS_NEXT_TAB[@]}" || return 1
+    else
+        pick_bind_keys prev_tab
+        pick_bind_keys next_tab
+    fi
     pick_bind_keys prev_group "${PICK_KEYS_PREV_GROUP[@]}" || return 1
     pick_bind_keys next_group "${PICK_KEYS_NEXT_GROUP[@]}" || return 1
     if [[ $PICK_MODE == single ]]; then

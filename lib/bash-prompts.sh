@@ -22,6 +22,9 @@
 #   PICK_STATE[i]   0/1 selected state: input/output for pick_multiselect.
 #   PICK_VALUE      single selection input/output ID; unset starts at first row.
 #   PICK_PROMPT     one line shown above the list; unset uses a generic title.
+#   PICK_TABS       1 shows the root groups as tabs below the prompt.
+#   PICK_TAB        active tab's group ID: input/output; an unknown or unset
+#     ID starts at the first tab.
 # Dependency API additionally uses:
 #   PICK_DEPS[i]    comma-separated IDs of earlier rows; tokens are trimmed.
 #   PICK_DIRECT[i]  explicit choices.
@@ -62,6 +65,7 @@
 # Optional keys (arrays; assign after sourcing, each replaces its action's keys):
 #   PICK_KEYS_UP=(Up k)          PICK_KEYS_DOWN=(Down j)
 #   PICK_KEYS_PREV_GROUP=()      PICK_KEYS_NEXT_GROUP=()
+#   PICK_KEYS_PREV_TAB=(Left h)  PICK_KEYS_NEXT_TAB=(Right l)
 #   PICK_KEYS_TOGGLE=(Space)     PICK_KEYS_ALL=(a)
 #   PICK_KEYS_CLEAR=(n)          PICK_KEYS_SUBMIT=(Enter)
 #   PICK_KEYS_CANCEL=(q Q Esc)   PICK_KEYS_BACK=()
@@ -76,12 +80,13 @@
 # configured aliases (default 1). Down from the last row wraps to the
 # first, and Up from the first wraps to the last; 0 retains bounded
 # movement.
-# Toggle, All, and Clear bindings apply only to multiselect and dependencies.
+# Toggle, All, and Clear bindings apply only to multiselect and dependencies;
+# tab bindings only with PICK_TABS.
 # Back applies to pick_select, pick_multiselect, and pick_dependencies.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
-#   row, dim notes, read-only rows, separators and key hint, yellow warning,
-#   red error. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
+#   row, reversed active tab, yellow warning, dim notes,
+#   read-only rows, separators and key hint, red error. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
 #   capability omits colors while supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
 # The API uses one active PICK_* state in the calling Bash process.
@@ -98,6 +103,8 @@ PICK_MAX_GROUP_DEPTH=8
 PICK_GROUP_JUMP_DEPTH=1
 PICK_WRAP_NAVIGATION=1
 PICK_GROUP_TAIL=()
+PICK_TABS=0
+PICK_TAB=
 PICK_SEPARATOR_BEFORE=()
 PICK_SEPARATOR_LABEL=()
 PICK_DEPS=()
@@ -125,6 +132,11 @@ PICK_GCHILDREN=()
 PICK_GLINKED=()
 PICK_GROW=()
 PICK_IGROUP=()
+PICK_ROOT=0
+PICK_TAB_GROUPS=()
+PICK_TAB_CURSOR=()
+PICK_TAB_OFFSET=()
+PICK_TAB_AT=0
 PICK_SEP_ANCHOR=()
 PICK_FOCUS_ROW=()
 PICK_DKIND=()
@@ -140,6 +152,7 @@ PICK_UP=
 PICK_ED=
 PICK_HOME=
 PICK_CLIPPED=
+PICK_CELLS=0
 PICK_WRAPPED=()
 PICK_LINE=
 PICK_EL=
@@ -148,12 +161,15 @@ PICK_PREV_ROWS=
 PICK_PREV_COLS=
 PICK_FRAME=()
 PICK_FRAME_STYLE=()
-PICK_FRAME_TAIL=()
+PICK_FRAME_SPANS=()
 PICK_ROW=
 PICK_ROW_STYLE=
-PICK_ROW_TAIL=
+PICK_ROW_SPANS=
+PICK_TITLE=
 PICK_STYLE_TITLE=
+PICK_STYLE_PLAIN=
 PICK_STYLE_GROUP=
+PICK_STYLE_TAB=
 PICK_STYLE_FOCUS=
 PICK_STYLE_MUTED=
 PICK_STYLE_WARNING=
@@ -177,6 +193,8 @@ PICK_KEYS_UP=(Up k)
 PICK_KEYS_DOWN=(Down j)
 PICK_KEYS_PREV_GROUP=()
 PICK_KEYS_NEXT_GROUP=()
+PICK_KEYS_PREV_TAB=(Left h)
+PICK_KEYS_NEXT_TAB=(Right l)
 PICK_KEYS_TOGGLE=(Space)
 PICK_KEYS_ALL=(a)
 PICK_KEYS_CLEAR=(n)

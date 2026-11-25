@@ -7,7 +7,7 @@ pick_sticky() {
     local capacity=$1 g=${PICK_DGROUP[PICK_OFFSET]:-0} i keep
     local -a reverse=()
     PICK_STICKY=()
-    while ((g > 0)); do
+    while ((g > 0 && g != PICK_ROOT)); do
         if [[ -n ${PICK_GLABEL[g]} ]] && ((PICK_GROW[g] < PICK_OFFSET)); then
             reverse[${#reverse[@]}]=$g
         fi
@@ -20,18 +20,19 @@ pick_sticky() {
 }
 
 pick_frame_row() {
-    # $1 = text, $2 = style, $3 = offset where the muted tail starts.
+    # $1 = text, $2 = style, $3 = spans: pairs of an offset and the role
+    # whose PICK_STYLE_* applies from there.
     local n=${#PICK_FRAME[@]}
     PICK_FRAME[n]=$1
     PICK_FRAME_STYLE[n]=${2-}
-    PICK_FRAME_TAIL[n]=${3-}
+    PICK_FRAME_SPANS[n]=${3-}
 }
 
 pick_render() {
     # A pending interrupt means the terminal is already restored; build
     # nothing so no further frame is composed for a dead screen.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-    local rows cols h d total drow start end title counter avail show_title msg_rows msg_spacer hint_rows spacer pinned g
+    local rows cols h d total drow start end title counter avail show_tabs show_title tab_spacer msg_rows msg_spacer hint_rows spacer pinned g
     pick_term_size
     rows=$PICK_TROWS
     cols=$PICK_TCOLS
@@ -41,11 +42,12 @@ pick_render() {
     [[ -z $PICK_MSG ]] || pick_wrap "$PICK_MSG" "$((cols - 1))"
     # The frame never exceeds the terminal height, or relative repainting
     # would lose rows that scrolled off. The list keeps at least one row;
-    # the title, message, hint lines, and spacers take what remains in that
-    # order, and the list gets the rest, up to its length.
+    # the tabs, title, message, hint lines, and spacers take what remains in
+    # that order, and the list gets the rest, up to its length.
     total=${#PICK_DKIND[@]}
     avail=$((rows - 1))
-    show_title=0; spacer=0; msg_spacer=0
+    show_tabs=0; show_title=0; tab_spacer=0; spacer=0; msg_spacer=0
+    if ((${#PICK_TAB_GROUPS[@]} > 0 && avail > 0)); then show_tabs=1; avail=$((avail - 1)); fi
     if ((avail > 0)); then show_title=1; avail=$((avail - 1)); fi
     msg_rows=${#PICK_WRAPPED[@]}
     ((msg_rows > avail)) && msg_rows=$avail
@@ -55,6 +57,7 @@ pick_render() {
     avail=$((avail - hint_rows))
     if ((avail > 0)); then spacer=1; avail=$((avail - 1)); fi
     if ((msg_rows > 0 && avail > 0)); then msg_spacer=1; avail=$((avail - 1)); fi
+    if ((show_tabs && avail > 0)); then tab_spacer=1; avail=$((avail - 1)); fi
     h=$((avail + 1))
     ((h > total)) && h=$total
     drow=${PICK_FOCUS_ROW[PICK_CURSOR]:-0}
@@ -72,17 +75,20 @@ pick_render() {
     done
     PICK_FRAME=()
     PICK_FRAME_STYLE=()
-    PICK_FRAME_TAIL=()
+    PICK_FRAME_SPANS=()
     if [[ -n ${PICK_PROMPT-} ]]; then title=$PICK_PROMPT
     elif [[ $PICK_MODE == single ]]; then title='Choose one item'
     else title='Select items'; fi
-    if ((total > h)); then
-        # Shorten the prompt rather than the position it is followed by.
-        counter="  ($((PICK_CURSOR + 1))/${#PICK_FOCUS[@]})"
-        pick_clip "$title" "$((cols - 1 - ${#counter}))"
-        title=$PICK_CLIPPED$counter
+    counter=
+    ((total <= h)) || counter="  ($((PICK_CURSOR + 1))/${#PICK_FOCUS[@]})"
+    # Shorten the prompt rather than the position it is followed by.
+    pick_clip "$title" "$((cols - 1 - ${#counter}))"
+    ((show_title)) && pick_frame_row "$PICK_CLIPPED$counter" "$PICK_STYLE_TITLE"
+    if ((show_tabs)); then
+        pick_tab_line "$((cols - 1))"
+        pick_frame_row "$PICK_ROW" '' "$PICK_ROW_SPANS"
     fi
-    ((show_title)) && pick_frame_row "$title" "$PICK_STYLE_TITLE"
+    ((tab_spacer)) && pick_frame_row ''
     start=$PICK_OFFSET
     end=$((start + h))
     for g in "${PICK_STICKY[@]}"; do
@@ -102,7 +108,7 @@ pick_render() {
     done
     for ((d=start; d<end; d++)); do
         pick_render_row "$d"
-        pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_TAIL"
+        pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_SPANS"
     done
     ((spacer)) && pick_frame_row ''
     for ((d=0; d<msg_rows; d++)); do pick_frame_row "${PICK_WRAPPED[d]}" "$PICK_MSG_STYLE"; done
@@ -125,11 +131,11 @@ pick_render() {
 }
 
 pick_render_row() {
-    # $1 = display row; sets PICK_ROW, PICK_ROW_STYLE, and PICK_ROW_TAIL.
+    # $1 = display row; sets PICK_ROW, PICK_ROW_STYLE, and PICK_ROW_SPANS.
     local d=$1
     PICK_ROW=
     PICK_ROW_STYLE=
-    PICK_ROW_TAIL=
+    PICK_ROW_SPANS=
     case ${PICK_DKIND[d]-} in
         header) pick_header_line "${PICK_DREF[d]}" ;;
         separator)
@@ -142,21 +148,75 @@ pick_render_row() {
 
 pick_header_line() {
     local g=$1 level indent=
-    for ((level=1; level<PICK_GLEVEL[g]; level++)); do indent="$indent  "; done
-    PICK_ROW="$indent${PICK_GLABEL[g]}"
+    for ((level=1; level<PICK_GLEVEL[g] - PICK_GLEVEL[PICK_ROOT]; level++)); do indent="$indent  "; done
+    pick_group_title "$g"
+    PICK_ROW="$indent$PICK_TITLE"
     PICK_ROW_STYLE=$PICK_STYLE_GROUP
+}
+
+pick_group_title() {
+    # Sets PICK_TITLE to the group's label and its selected and total counts.
+    PICK_TITLE=${PICK_GLABEL[$1]}
     [[ $PICK_MODE != single ]] || return 0
-    pick_group_counts "$g"
-    PICK_ROW="$PICK_ROW ($PICK_GSEL/$PICK_GTOT)"
+    pick_group_counts "$1"
+    PICK_TITLE="$PICK_TITLE ($PICK_GSEL/$PICK_GTOT)"
+}
+
+pick_tab_line() {
+    # $1 = width; sets PICK_ROW and PICK_ROW_SPANS. The active tab always
+    # shows. Its neighbors join while they fit, and < > stand for the tabs
+    # left out.
+    local cols=$1 n=${#PICK_TAB_GROUPS[@]} k first last used total grew
+    local -a text=() cells=()
+    total=0
+    for ((k=0; k<n; k++)); do
+        pick_group_title "${PICK_TAB_GROUPS[k]}"
+        text[k]=" $PICK_TITLE "
+        [[ -n $PICK_STYLE_TAB || $k != "$PICK_TAB_AT" ]] || text[k]="[$PICK_TITLE]"
+        pick_clip "${text[k]}" 9999
+        cells[k]=$PICK_CELLS
+        total=$((total + PICK_CELLS))
+    done
+    total=$((total + n - 1))
+    first=0; last=$((n - 1))
+    if ((total > cols)); then
+        first=$PICK_TAB_AT; last=$PICK_TAB_AT
+        used=$((cells[first] + 2))
+        grew=1
+        while ((grew)); do
+            grew=0
+            if ((last < n - 1)) && ((used + 1 + cells[last + 1] <= cols)); then
+                last=$((last + 1)); used=$((used + 1 + cells[last])); grew=1
+            fi
+            if ((first > 0)) && ((used + 1 + cells[first - 1] <= cols)); then
+                first=$((first - 1)); used=$((used + 1 + cells[first])); grew=1
+            fi
+        done
+    fi
+    PICK_ROW=
+    PICK_ROW_SPANS='0 MUTED'
+    ((first == 0)) || PICK_ROW='<'
+    for ((k=first; k<=last; k++)); do
+        if ((k > first)); then
+            PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW} PLAIN"
+            PICK_ROW="$PICK_ROW "
+        fi
+        PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW}"
+        if ((k == PICK_TAB_AT)); then PICK_ROW_SPANS="$PICK_ROW_SPANS TAB"
+        else PICK_ROW_SPANS="$PICK_ROW_SPANS PLAIN"; fi
+        PICK_ROW=$PICK_ROW${text[k]}
+    done
+    PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW} MUTED"
+    ((last == n - 1)) || PICK_ROW="$PICK_ROW>"
 }
 
 pick_item_line() {
     local idx=$1 pos=$2 mark="[ ]" notes why= reqs= k j g indent=
+    g=${PICK_IGROUP[idx]}
+    for ((k=PICK_GLEVEL[PICK_ROOT]; k<PICK_GLEVEL[g]; k++)); do indent="$indent  "; done
     notes=${PICK_NOTE[idx]-}
     PICK_ROW_STYLE=
     [[ -z ${PICK_DISABLED[idx]:-} ]] || PICK_ROW_STYLE=$PICK_STYLE_MUTED
-    g=${PICK_IGROUP[idx]}
-    for ((k=0; k<PICK_GLEVEL[g]; k++)); do indent="$indent  "; done
     if [[ $PICK_MODE == single ]]; then
         mark=
     elif [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
@@ -188,6 +248,6 @@ pick_item_line() {
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
     else PICK_ROW="$indent  "; fi
     PICK_ROW="$PICK_ROW${mark:+$mark }${PICK_LABEL[idx]}"
-    PICK_ROW_TAIL=${#PICK_ROW}
+    PICK_ROW_SPANS="${#PICK_ROW} MUTED"
     PICK_ROW="$PICK_ROW${notes:+  $notes}"
 }
