@@ -5,6 +5,7 @@ Grouped interactive selection in Bash:
 - `pick_select`: one highlighted item, returned as an ID in `PICK_VALUE`.
 - `pick_multiselect`: checked items, returned as flags in `PICK_STATE`.
 - `pick_dependencies`: initialized checkboxes with live dependency selection.
+- `pick_choices`: one value per row, returned in `PICK_RESULT`.
 - `pick_run`: dependency-aware checked items.
 
 All use the same terminal UI. Requires Bash 3.2+ and system `tput`, `stty`,
@@ -85,7 +86,7 @@ Parallel, dense, zero-based arrays describe each row; `PICK_VALUE` is a scalar:
 | `PICK_GROUP` | Group ID when groups are declared; otherwise single-level group text. Empty or unset places an item at the root. |
 | `PICK_GROUP_TAIL` | Group IDs rendered after their siblings, including at the root. |
 | `PICK_VALID` | `0` excludes a row; `1` or unset includes it. |
-| `PICK_DISABLED` | Optional reason a visible checkbox is read-only; its initial state is retained. Applies to multi/dependency selection. |
+| `PICK_DISABLED` | Optional reason a visible checkbox or value is read-only; its initial state is retained. Applies to multi/dependency selection and value rows. |
 | `PICK_STATE` | Selected flags (`0`/`1`) for multi-selection, input and output. |
 | `PICK_VALUE` | Initial and submitted ID for single selection. |
 | `PICK_PROMPT` | One line shown above the list. Unset shows a generic title. |
@@ -191,6 +192,55 @@ the first tab. Nested groups keep their headers inside a tab.
 On a narrow terminal the active tab stays visible and `<` and `>` stand for the
 tabs left out. Without reverse video the active tab is bracketed.
 
+## Value rows
+
+`pick_choices` gives each row a list of values and no checkbox: the row always
+holds exactly one of them, shown in a column beside the labels.
+
+```bash
+PICK_ID=(editor keymap sleep)
+PICK_LABEL=('Editor' 'Editor key map' 'Sleep rules')
+PICK_VALUES=('installed, update, remove' 'not applied, apply' 'custom, laptop, server')
+PICK_OFF=('remove' 'not applied')
+PICK_DEPS=('' 'editor')
+if pick_choices; then
+    printf '%s\n' "${PICK_RESULT[@]}"
+fi
+```
+
+| Array | Contract |
+|---|---|
+| `PICK_VALUES` | Comma-separated values, in the order Toggle moves through them; trimmed like `PICK_DEPS`. |
+| `PICK_CURRENT` | Value the row starts from. Unset uses the first value. |
+| `PICK_CHOICE` | Picked value, input and output. Unset uses the current value. |
+| `PICK_OFF` | Comma-separated values that leave the row off. |
+| `PICK_WHILE_OFF` | Optional value from `PICK_VALUES` used when a prerequisite is turned off, unless a `PICK_OFF` value is picked. |
+| `PICK_RESULT` | Output: the value in effect. |
+
+Toggle changes the value in place, a changed value is shown in color, and tabs
+count the rows that change. A long label is shortened before its value. A note
+that does not fit its row is shown in full below the list while focused.
+
+`PICK_DEPS` names prerequisites with the grammar described below, and a
+prerequisite is met while its value is not one of its `PICK_OFF` values. While
+one is off, a row can only stay at its current value or turn off, and it names
+what it requires, with the tab of a prerequisite shown elsewhere. Turning a
+prerequisite off moves the rows that need it to their current off value or else
+their first one, and a message names them. A prerequisite that was off from the
+start leaves the row's current value alone. `PICK_CHOICE` keeps what was picked,
+so a row returns to it when its prerequisites do; pass `PICK_CHOICE` back to
+reopen the prompt and act on `PICK_RESULT`. A row with `PICK_DISABLED` keeps its
+value whatever its prerequisites hold.
+
+With `PICK_WHILE_OFF`, Toggle offers that value and any `PICK_OFF` values while
+a prerequisite is being turned off. Set `PICK_CURRENT` to the `PICK_WHILE_OFF`
+value to use it for a row whose prerequisite is already off. List the ordinary
+value first in `PICK_VALUES`: that is the fallback when the picked value is
+`PICK_WHILE_OFF` and prerequisites are on again.
+
+It uses the `0`/`1`/`2`/`3` return contract of `pick_multiselect`; on `3`,
+`PICK_CHOICE` and `PICK_RESULT` hold the unsubmitted state.
+
 ## Dependency-aware selection
 
 `pick_dependencies` preserves the supplied `PICK_STATE`. Selecting an item adds
@@ -249,8 +299,9 @@ Each part of a prompt has one look, following the text roles of
 | Group header | Cyan |
 | Focused row | Bold |
 | Active tab | Reverse video |
+| Changed value | Yellow |
 | Note, read-only row, separator, key hint | Dim |
-| Message that other rows were unchecked too | Yellow |
+| Message that other rows changed too | Yellow |
 | Message that refuses an action | Red |
 
 Checked rows differ only by `[x]`. A nonempty `NO_COLOR` or `TERM=dumb`
@@ -260,9 +311,9 @@ produces plain text; without color capability only bold and dim apply.
 
 All interactive APIs read their active bindings at the start of each call.
 Single selection uses Up, Down, Submit, Back, and Cancel; multi-selection
-also uses Toggle, All, and Clear. Prev/next group jumps are available in every
-interactive API when bound, and prev/next tab with `PICK_TABS=1`.
-`pick_dependencies` supports Back; the
+also uses Toggle, All, and Clear, and value rows use Toggle. Prev/next group
+jumps are available in every interactive API when bound, and prev/next tab with
+`PICK_TABS=1`. `pick_dependencies` supports Back; the
 compatibility entry point `pick_run` leaves it unbound.
 Defaults are initialized when the library is sourced:
 
@@ -303,7 +354,7 @@ aliases, and defaults to `1`: Down from the last row wraps to the first, and
 Up from the first wraps to the last. Set it to `0` to retain bounded movement.
 Back is unbound by default; bind it to let a caller step backwards through
 its own sequence of prompts. Unknown tokens or conflicting actions fail before opening the UI:
-`pick_select`, `pick_multiselect`, and `pick_dependencies` return `2`; `pick_run` returns `1`.
+`pick_run` returns `1` and the others return `2`.
 
 The hint below the list shows the active bindings, and a message appears above it until the next action; both wrap to the terminal width. The actions have these semantics:
 
@@ -322,7 +373,8 @@ The hint below the list shows the active bindings, and a message appears above i
 and returns `3` on Back with the current flags. Read-only checkbox states are
 preserved by Toggle, All, Clear, and dependent deselection.
 
-Prev/next tab keys wrap around.
+`pick_choices` moves the focused row to its next allowed value on Toggle,
+submits any values, and returns `3` on Back. Prev/next tab keys wrap around.
 
 A lone Esc takes effect after 0.1 seconds, which distinguishes it from an
 escape sequence.
@@ -367,6 +419,7 @@ Use a name to run an example directly and return its exit status:
 ./demo checkbox
 ./demo dependencies
 ./demo lock
+./demo choices
 ./demo keybindings
 ./demo nested
 ./demo separators
@@ -380,7 +433,8 @@ selection with an initial focus; `checkbox` shows initial checked state,
 repeated labels with distinct IDs, and notes. `dependencies` shows
 transitive automatic selection and cascading deselection, then prints each
 selected ID as direct or auto with the selected IDs that require it; `lock`
-shows the alternative locking behavior. `nested` demonstrates four levels,
+shows the alternative locking behavior. `choices` shows value rows in tabs,
+with rows that turn off with what they require. `nested` demonstrates four levels,
 parent counts, tail ordering, separators inside and between groups, and
 Left/Right group jumps at depth 2; `separators` demonstrates dividers in a
 single-select list without groups.

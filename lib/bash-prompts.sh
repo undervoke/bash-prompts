@@ -25,6 +25,17 @@
 #   PICK_TABS       1 shows the root groups as tabs below the prompt.
 #   PICK_TAB        active tab's group ID: input/output; an unknown or unset
 #     ID starts at the first tab.
+# Value rows (pick_choices) additionally use:
+#   PICK_VALUES[i]  comma-separated values; a row always holds one of them.
+#   PICK_CURRENT[i] value the row starts from; unset uses the first value.
+#   PICK_CHOICE[i]  picked value: input/output; unset uses the current value.
+#   PICK_OFF[i]     comma-separated values that leave the row off for the
+#     rows whose PICK_DEPS name it.
+#   PICK_WHILE_OFF[i] optional value from PICK_VALUES, used when a prerequisite
+#     is turned off or the row starts at that value with a prerequisite off.
+#     Only PICK_OFF values can override it while it applies. With prerequisites
+#     on, a choice of this value falls back to the first value in PICK_VALUES.
+#   PICK_RESULT[i]  output: value in effect after prerequisites.
 # Dependency API additionally uses:
 #   PICK_DEPS[i]    comma-separated IDs of earlier rows; tokens are trimmed.
 #   PICK_DIRECT[i]  explicit choices.
@@ -46,6 +57,9 @@
 # the unsubmitted state at that moment.
 # pick_dependencies: retains PICK_STATE, with live prerequisites on selection,
 # empty submission and Back. Returns the same 0/1/2/3 statuses as multiselect.
+# pick_choices: one value per row, with the same 0/1/2/3 statuses. While a
+#   prerequisite is off, a row can only stay at its current value or turn off;
+#   turning a prerequisite off uses PICK_WHILE_OFF if set, else turns the row off.
 # pick_run: dependency-aware selection, starting with nothing checked.
 #   Live closure, dependency-mode deselection, retained auto choices, and
 #   nonempty submission.
@@ -80,12 +94,12 @@
 # configured aliases (default 1). Down from the last row wraps to the
 # first, and Up from the first wraps to the last; 0 retains bounded
 # movement.
-# Toggle, All, and Clear bindings apply only to multiselect and dependencies;
-# tab bindings only with PICK_TABS.
-# Back applies to pick_select, pick_multiselect, and pick_dependencies.
+# Toggle moves a value row to its next value. All and Clear bindings apply
+# only to multiselect and dependencies; tab bindings only with PICK_TABS.
+# Back applies to every entry point but pick_run.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
-#   row, reversed active tab, yellow warning, dim notes,
+#   row, reversed active tab, yellow changed value and warning, dim notes,
 #   read-only rows, separators and key hint, red error. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
 #   capability omits colors while supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
@@ -114,6 +128,12 @@ PICK_DIRECT=()
 PICK_STATE=()
 unset PICK_VALUE
 PICK_AUTO=()
+PICK_VALUES=()
+PICK_CURRENT=()
+PICK_CHOICE=()
+PICK_OFF=()
+PICK_WHILE_OFF=()
+PICK_RESULT=()
 PICK_SPLIT=()
 PICK_SELECTED_INDICES=()
 PICK_REQUIRED_BY_INDICES=()
@@ -137,6 +157,14 @@ PICK_TAB_GROUPS=()
 PICK_TAB_CURSOR=()
 PICK_TAB_OFFSET=()
 PICK_TAB_AT=0
+PICK_DEP_ROWS=()
+PICK_ON=()
+PICK_MISSING=()
+PICK_WITHDRAWN=()
+PICK_NEXT=
+PICK_LABEL_CELLS=0
+PICK_VALUE_CELLS=0
+PICK_VALUE_COLUMN=0
 PICK_SEP_ANCHOR=()
 PICK_FOCUS_ROW=()
 PICK_DKIND=()
@@ -153,7 +181,9 @@ PICK_ED=
 PICK_HOME=
 PICK_CLIPPED=
 PICK_CELLS=0
+PICK_ELLIPSIS=
 PICK_WRAPPED=()
+PICK_NOTES=
 PICK_LINE=
 PICK_EL=
 PICK_PREV_COUNT=0
@@ -170,6 +200,7 @@ PICK_STYLE_TITLE=
 PICK_STYLE_PLAIN=
 PICK_STYLE_GROUP=
 PICK_STYLE_TAB=
+PICK_STYLE_CHANGED=
 PICK_STYLE_FOCUS=
 PICK_STYLE_MUTED=
 PICK_STYLE_WARNING=
@@ -215,6 +246,7 @@ _BASH_PROMPTS_DIR=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$_BASH_PROMPTS_DIR/bash-prompts/core.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/groups.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/selection.sh" || return 1
+source "$_BASH_PROMPTS_DIR/bash-prompts/choices.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/terminal.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/keys.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/render.sh" || return 1

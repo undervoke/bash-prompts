@@ -117,7 +117,7 @@ pick_prepare_styles() {
     local bold colors
     PICK_STYLE_TITLE=; PICK_STYLE_GROUP=; PICK_STYLE_FOCUS=; PICK_STYLE_MUTED=
     PICK_STYLE_WARNING=; PICK_STYLE_ERROR=; PICK_STYLE_RESET=
-    PICK_STYLE_TAB=
+    PICK_STYLE_TAB=; PICK_STYLE_CHANGED=
     [[ -z ${NO_COLOR-} && ${TERM-} != dumb ]] || return 0
     PICK_STYLE_RESET=$(tput sgr0 2>/dev/null) || { PICK_STYLE_RESET=; return 0; }
     [[ -n $PICK_STYLE_RESET ]] || return 0
@@ -127,14 +127,24 @@ pick_prepare_styles() {
     PICK_STYLE_FOCUS=$bold
     PICK_STYLE_MUTED=$(tput dim 2>/dev/null || true)
     PICK_STYLE_TAB=$(tput rev 2>/dev/null || true)
+    PICK_STYLE_CHANGED=$bold
     colors=$(tput colors 2>/dev/null) || return 0
     case $colors in ''|*[!0-9]*) return 0 ;; esac
     ((colors >= 8)) || return 0
     PICK_STYLE_ERROR=$(tput setaf 1 2>/dev/null || true)
     PICK_STYLE_WARNING=$(tput setaf 3 2>/dev/null || true)
+    PICK_STYLE_CHANGED=$PICK_STYLE_WARNING
     PICK_STYLE_GROUP=$(tput setaf 6 2>/dev/null || true)
     PICK_STYLE_TITLE=$bold$PICK_STYLE_GROUP
     return 0
+}
+
+pick_prepare_text() {
+    # Drawn by the library itself, in ASCII outside UTF-8 locales.
+    PICK_ELLIPSIS='..'
+    case ${LC_ALL:-${LC_CTYPE:-${LANG-}}} in
+        *UTF-8*|*utf-8*|*UTF8*|*utf8*) PICK_ELLIPSIS='…' ;;
+    esac
 }
 
 pick_clip() {

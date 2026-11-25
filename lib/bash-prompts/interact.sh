@@ -17,6 +17,7 @@ pick_run() {
 pick_interact() {
     local key seq part rc=1 start i resized
     pick_prepare_keys || return 2
+    pick_prepare_text
     pick_build_focus || return 2
     ((${#PICK_FOCUS[@]})) || { pick_err "no selectable items"; return 2; }
     PICK_CURSOR=0
@@ -124,7 +125,7 @@ pick_interact() {
             next_group) PICK_MSG=; pick_jump_group 1 ;;
             prev_tab) PICK_MSG=; pick_switch_tab -1 ;;
             next_tab) PICK_MSG=; pick_switch_tab 1 ;;
-            toggle) pick_action toggle ;;
+            toggle) if [[ $PICK_MODE == choices ]]; then pick_next_value; else pick_action toggle; fi ;;
             all) pick_action all ;;
             clear) pick_action clear ;;
             cancel) rc=1; break ;;
@@ -199,5 +200,12 @@ pick_dependencies() {
             PICK_DIRECT[i]=1; PICK_STATE[i]=1
         fi
     done
+    pick_interact
+}
+
+pick_choices() {
+    local PICK_MODE=choices
+    pick_validate_items || return 2
+    pick_prepare_choices || return 2
     pick_interact
 }

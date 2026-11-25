@@ -230,6 +230,7 @@ pick_build_rows() {
     local -a path=() previous=() reverse=()
     PICK_FOCUS=(); PICK_FOCUS_ROW=(); PICK_DKIND=(); PICK_DREF=(); PICK_DGROUP=()
     pick_walk_group "$PICK_ROOT"
+    [[ $PICK_MODE != choices ]] || pick_measure_values
     # Blank rows set groups apart; the only group of a tab is already apart.
     if ((PICK_ROOT)); then
         case ${PICK_GCHILDREN[PICK_ROOT]} in ' g'*' '*) ;; ' g'*) spaced=1 ;; esac
@@ -286,7 +287,9 @@ pick_group_counts() {
         while ((g > 0 && g != want)); do g=${PICK_GPARENT[g]}; done
         ((g == want)) || continue
         PICK_GTOT=$((PICK_GTOT + 1))
-        [[ ${PICK_STATE[i]:-0} != 1 ]] || PICK_GSEL=$((PICK_GSEL + 1))
+        if [[ $PICK_MODE == choices ]]; then
+            [[ ${PICK_RESULT[i]} == "${PICK_CURRENT[i]}" ]] || PICK_GSEL=$((PICK_GSEL + 1))
+        elif [[ ${PICK_STATE[i]:-0} == 1 ]]; then PICK_GSEL=$((PICK_GSEL + 1)); fi
     done
 }
 

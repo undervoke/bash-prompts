@@ -32,14 +32,23 @@ pick_render() {
     # A pending interrupt means the terminal is already restored; build
     # nothing so no further frame is composed for a dead screen.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-    local rows cols h d total drow start end title counter avail show_tabs show_title tab_spacer msg_rows msg_spacer hint_rows spacer pinned g
+    local rows cols h d total drow start end title counter avail show_tabs show_title tab_spacer msg_rows msg_style msg_spacer hint_rows spacer pinned g
     pick_term_size
     rows=$PICK_TROWS
     cols=$PICK_TCOLS
     # The inline painter keeps the last column free.
     pick_hint "$((cols - 1))"
+    [[ $PICK_MODE != choices ]] || pick_value_column "$((cols - 1))"
     PICK_WRAPPED=()
-    [[ -z $PICK_MSG ]] || pick_wrap "$PICK_MSG" "$((cols - 1))"
+    msg_style=$PICK_MSG_STYLE
+    if [[ -n $PICK_MSG ]]; then pick_wrap "$PICK_MSG" "$((cols - 1))"
+    elif [[ $PICK_MODE == choices ]]; then
+        # The focused row's note, when the row has no room for all of it.
+        msg_style=$PICK_STYLE_MUTED
+        pick_item_line "${PICK_FOCUS[PICK_CURSOR]}" "$PICK_CURSOR"
+        pick_clip "$PICK_ROW" "$((cols - 1))"
+        [[ $PICK_CLIPPED == "$PICK_ROW" ]] || pick_wrap "$PICK_NOTES" "$((cols - 1))"
+    fi
     # The frame never exceeds the terminal height, or relative repainting
     # would lose rows that scrolled off. The list keeps at least one row;
     # the tabs, title, message, hint lines, and spacers take what remains in
@@ -111,7 +120,7 @@ pick_render() {
         pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_SPANS"
     done
     ((spacer)) && pick_frame_row ''
-    for ((d=0; d<msg_rows; d++)); do pick_frame_row "${PICK_WRAPPED[d]}" "$PICK_MSG_STYLE"; done
+    for ((d=0; d<msg_rows; d++)); do pick_frame_row "${PICK_WRAPPED[d]}" "$msg_style"; done
     ((msg_spacer)) && pick_frame_row ''
     for ((d=0; d<hint_rows; d++)); do pick_frame_row "${PICK_HINT[d]}" "$PICK_STYLE_MUTED"; done
     if [[ -n $PICK_PREV_ROWS && ( $rows != "$PICK_PREV_ROWS" || $cols != "$PICK_PREV_COLS" ) ]]; then
@@ -149,17 +158,20 @@ pick_render_row() {
 pick_header_line() {
     local g=$1 level indent=
     for ((level=1; level<PICK_GLEVEL[g] - PICK_GLEVEL[PICK_ROOT]; level++)); do indent="$indent  "; done
-    pick_group_title "$g"
+    PICK_TITLE=${PICK_GLABEL[g]}
+    [[ $PICK_MODE == choices ]] || pick_group_title "$g"
     PICK_ROW="$indent$PICK_TITLE"
     PICK_ROW_STYLE=$PICK_STYLE_GROUP
 }
 
 pick_group_title() {
-    # Sets PICK_TITLE to the group's label and its selected and total counts.
+    # Sets PICK_TITLE to the group's label and its counts: selected and total
+    # checkboxes, or a tab's value rows that change.
     PICK_TITLE=${PICK_GLABEL[$1]}
     [[ $PICK_MODE != single ]] || return 0
     pick_group_counts "$1"
-    PICK_TITLE="$PICK_TITLE ($PICK_GSEL/$PICK_GTOT)"
+    if [[ $PICK_MODE != choices ]]; then PICK_TITLE="$PICK_TITLE ($PICK_GSEL/$PICK_GTOT)"
+    elif ((PICK_GSEL)); then PICK_TITLE="$PICK_TITLE ($PICK_GSEL)"; fi
 }
 
 pick_tab_line() {
@@ -214,6 +226,7 @@ pick_item_line() {
     local idx=$1 pos=$2 mark="[ ]" notes why= reqs= k j g indent=
     g=${PICK_IGROUP[idx]}
     for ((k=PICK_GLEVEL[PICK_ROOT]; k<PICK_GLEVEL[g]; k++)); do indent="$indent  "; done
+    if [[ $PICK_MODE == choices ]]; then pick_value_line "$idx" "$pos" "$indent"; return 0; fi
     notes=${PICK_NOTE[idx]-}
     PICK_ROW_STYLE=
     [[ -z ${PICK_DISABLED[idx]:-} ]] || PICK_ROW_STYLE=$PICK_STYLE_MUTED

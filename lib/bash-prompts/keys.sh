@@ -7,6 +7,7 @@ pick_hint() {
     local cols=$1 i seg line= verbs help
     if [[ $PICK_MODE == single ]]; then verbs=(up down prev next prev next - - - select back cancel)
     elif [[ $PICK_MODE == dependencies ]]; then verbs=(up down prev next prev next toggle all clear submit back cancel)
+    elif [[ $PICK_MODE == choices ]]; then verbs=(up down prev next prev next change - - submit back cancel)
     else verbs=(up down prev next prev next toggle all none submit back cancel); fi
     help=("${PICK_KEY_HELP[@]}")
     # Each pair shares one segment when both its keys are bound.
@@ -95,8 +96,13 @@ pick_prepare_keys() {
         pick_bind_keys clear
     else
         pick_bind_keys toggle "${PICK_KEYS_TOGGLE[@]}" || return 1
-        pick_bind_keys all "${PICK_KEYS_ALL[@]}" || return 1
-        pick_bind_keys clear "${PICK_KEYS_CLEAR[@]}" || return 1
+        if [[ $PICK_MODE == choices ]]; then
+            pick_bind_keys all
+            pick_bind_keys clear
+        else
+            pick_bind_keys all "${PICK_KEYS_ALL[@]}" || return 1
+            pick_bind_keys clear "${PICK_KEYS_CLEAR[@]}" || return 1
+        fi
     fi
     pick_bind_keys submit "${PICK_KEYS_SUBMIT[@]}" || return 1
     if [[ $PICK_MODE == dependencies && ${PICK_ALLOW_BACK:-0} == 0 ]]; then pick_bind_keys back
