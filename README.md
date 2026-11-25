@@ -274,8 +274,8 @@ if pick_keybinding; then
 fi
 ```
 
-`PICK_VALUE` holds the key, input and output; an input that is not a key means
-none yet, and entry starts at once. Toggle enters another key. It returns `0` on
+`PICK_VALUE` holds the key, input and output; an input that could not be entered
+means none yet, and entry starts at once. Toggle enters another key. It returns `0` on
 submission, `1` on cancellation, `2` for invalid input or no interactive
 terminal, and `3` on Back.
 

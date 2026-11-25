@@ -197,7 +197,7 @@ pick_keybinding_alone() {
     local -a PICK_SEPARATOR_BEFORE=() PICK_SEPARATOR_LABEL=() PICK_DEPS=() PICK_VALID=() PICK_DISABLED=()
     local -a PICK_VALUES=() PICK_CURRENT=() PICK_CHOICE=() PICK_OFF=() PICK_WHILE_OFF=() PICK_RESULT=()
     local -a PICK_COLUMNS=() PICK_CELLS=() PICK_FORMAT=() PICK_KEYBINDING_DEFAULT=() PICK_KEYBINDING_SCOPE=() PICK_KEYS_NEXT_VALUE=()
-    if pick_keybinding_parse "${PICK_VALUE-}"; then PICK_CURRENT=("$PICK_KEYBINDING_VALUE")
+    if pick_keybinding_parse "${PICK_VALUE-}" && pick_keybinding_usable; then PICK_CURRENT=("$PICK_KEYBINDING_VALUE")
     else PICK_EDIT_FIRST=1; fi
     pick_prepare_choices || return 2
     pick_interact || rc=$?
@@ -273,25 +273,31 @@ pick_keybinding_type() {
     return 1
 }
 
-pick_keybinding_admit() {
-    # $1 = row. Whether the key just read can be entered: a key that also
-    # types a character needs a modifier that keeps it from doing so. Leaves
-    # the reason or the check's warning in PICK_KEYBINDING_MESSAGE.
-    local value=$PICK_KEYBINDING_VALUE rc=0
+pick_keybinding_usable() {
+    # Whether the key just read can be entered at all: a key that also types a
+    # character needs a modifier that keeps it from doing so. Leaves the reason
+    # in PICK_KEYBINDING_MESSAGE.
     PICK_KEYBINDING_MESSAGE=
-    case $value in
+    case $PICK_KEYBINDING_VALUE in
         *ctrl+*|*option+*|*cmd+*|f[1-9]|f1[0-9]|f20|shift+f[1-9]|shift+f1[0-9]|shift+f20) ;;
         *)
             if pick_key_has_globe "$PICK_KEYBINDING_KEY"; then
                 PICK_KEYBINDING_MESSAGE='Hold Control, Option, or Command with this key.'
                 return 1
             fi
-            if [[ $value != fn+* ]]; then
+            if [[ $PICK_KEYBINDING_VALUE != fn+* ]]; then
                 PICK_KEYBINDING_MESSAGE='Hold Control, Option, Command, or Globe with this key.'
                 return 1
             fi
             ;;
     esac
+}
+
+pick_keybinding_admit() {
+    # $1 = row. Whether the key just read can be entered for it. Leaves the
+    # reason or the check's warning in PICK_KEYBINDING_MESSAGE.
+    local value=$PICK_KEYBINDING_VALUE rc=0
+    pick_keybinding_usable || return 1
     [[ -n ${PICK_KEYBINDING_CHECK-} ]] || return 0
     if ((PICK_ALONE)); then "$PICK_KEYBINDING_CHECK" "$value" || rc=1
     else "$PICK_KEYBINDING_CHECK" "$value" "$1" || rc=1; fi
@@ -317,9 +323,10 @@ pick_row_key() {
     PICK_HELD[$1]=
     PICK_OWN[$1]=0
     if pick_csv_has "$value" "${PICK_VALUES[$1]-}"; then
-        pick_csv_has "$value" "${PICK_OFF[$1]-}" || PICK_HELD[$1]=${PICK_KEYBINDING_DEFAULT[$1]-}
+        if pick_csv_has "$value" "${PICK_OFF[$1]-}" || ! pick_keybinding_parse "${PICK_KEYBINDING_DEFAULT[$1]-}"; then return 0; fi
+        PICK_HELD[$1]=$PICK_KEYBINDING_VALUE
     elif [[ ${PICK_EDIT[$1]-} == pick_keybinding ]] && pick_keybinding_parse "$value"; then
-        PICK_HELD[$1]=$value
+        PICK_HELD[$1]=$PICK_KEYBINDING_VALUE
         PICK_OWN[$1]=1
     fi
 }
