@@ -152,7 +152,6 @@ pick_can_return() {
     # without entering it: not when that is a fixed value already, and for a
     # key row only when it is a key.
     ! pick_csv_has "${PICK_CURRENT[$1]}" "${PICK_VALUES[$1]-}" || return 1
-    [[ -n ${PICK_CURRENT[$1]} ]] || return 1
     [[ ${PICK_EDIT[$1]} != pick_keybinding ]] || pick_keybinding_parse "${PICK_CURRENT[$1]}"
 }
 
@@ -320,8 +319,8 @@ pick_value_column() {
     ((PICK_VALUE_COLUMN >= cols / 3)) || PICK_VALUE_COLUMN=$((cols / 3))
     ((PICK_VALUE_COLUMN <= PICK_LABEL_CELLS)) || PICK_VALUE_COLUMN=$PICK_LABEL_CELLS
     over=$((PICK_VALUE_COLUMN + rest - cols))
-    for ((k=${#PICK_CELL_COLUMNS[@]}-1; k>=0 && over>0; k--)); do
-        width=${PICK_CELL_COLUMNS[k]}
+    for ((k=PICK_CELL_COUNT-1; k>=0 && over>0; k--)); do
+        width=${PICK_CELL_COLUMNS[k]:-0}
         ((width)) || continue
         if ((width - over >= 4)); then
             PICK_CELL_COLUMNS[k]=$((width - over))
