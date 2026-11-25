@@ -62,6 +62,7 @@ pick_interact() {
         ((got != 1)) || { rc=1; break; }
         ((got != 2)) || continue
         pick_key_action "$PICK_PRESSED"
+        pick_page_action
         case $PICK_KEY_ACTION in
             up)
                 PICK_MSG=

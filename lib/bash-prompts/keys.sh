@@ -11,7 +11,10 @@ pick_hint() {
     elif [[ $PICK_MODE == choices ]]; then
         verbs=(up down prev next prev next change - - - submit back cancel)
         i=${PICK_FOCUS[PICK_CURSOR]}
-        if [[ -n ${PICK_EDIT[i]-} ]]; then
+        if pick_on_submit_page; then
+            verbs[6]=choose
+            ((PICK_CURSOR < 2)) || verbs[6]=-
+        elif [[ -n ${PICK_EDIT[i]-} ]]; then
             verbs[6]=edit
             if pick_next_allowed "$i"; then pick_format_value "$i" "$PICK_NEXT"; verbs[7]=$PICK_TEXT; fi
         fi

@@ -181,6 +181,22 @@ pick_change_value() {
     else pick_next_value; fi
 }
 
+pick_page_action() {
+    # On the submit page Toggle runs the focused action, and the rows below
+    # the actions are only read.
+    pick_on_submit_page || return 0
+    case $PICK_KEY_ACTION in
+        toggle)
+            case $PICK_CURSOR in
+                0) PICK_KEY_ACTION=submit ;;
+                1) PICK_KEY_ACTION=cancel ;;
+                *) PICK_KEY_ACTION= ;;
+            esac
+            ;;
+        next_value) PICK_KEY_ACTION= ;;
+    esac
+}
+
 pick_next_value() {
     local idx=${PICK_FOCUS[PICK_CURSOR]}
     PICK_MSG=
@@ -266,11 +282,12 @@ pick_measure_values() {
     PICK_CELL_CELLS=()
     PICK_HEADED=0
     for i in "${PICK_FOCUS[@]}"; do
+        ((i < ${#PICK_LABEL[@]})) || continue
         g=${PICK_IGROUP[i]}
         pick_clip "${PICK_LABEL[i]}" 9999
         width=$((PICK_WIDTH + 2 + 2 * (PICK_GLEVEL[g] - PICK_GLEVEL[PICK_ROOT])))
         ((width <= PICK_LABEL_CELLS)) || PICK_LABEL_CELLS=$width
-        if [[ -n ${PICK_CELLS[i]-} ]]; then
+        if [[ -n ${PICK_CELLS[i]-} ]] && ! pick_on_submit_page; then
             PICK_HEADED=1
             pick_split_cells "${PICK_CELLS[i]}"
             for ((k=0; k<${#PICK_SPLIT_CELLS[@]}; k++)); do
@@ -292,7 +309,7 @@ pick_measure_values() {
             ((PICK_WIDTH <= PICK_VALUE_CELLS)) || PICK_VALUE_CELLS=$PICK_WIDTH
         done
     done
-    if ((${#PICK_COLUMNS[@]} == 0)); then PICK_HEADED=0; fi
+    if ((${#PICK_COLUMNS[@]} == 0)) || pick_on_submit_page; then PICK_HEADED=0; fi
     ((PICK_HEADED)) || return 0
     pick_clip "${PICK_COLUMNS[0]-}" 9999
     ((PICK_WIDTH + 2 <= PICK_LABEL_CELLS)) || PICK_LABEL_CELLS=$((PICK_WIDTH + 2))
@@ -376,6 +393,7 @@ pick_column_line() {
 pick_value_line() {
     # $1 = row, $2 = focus position, $3 = indent. Also sets PICK_NOTES.
     local idx=$1 notes=${PICK_NOTE[$1]-} role=PLAIN lead="$3  "
+    ! pick_on_submit_page || notes=${PICK_REVIEW_NOTE[idx]}
     # Neither changes until a value does.
     if [[ -z ${PICK_SHOWN[idx]+set} ]]; then
         pick_format_value "$idx" "${PICK_RESULT[idx]}"

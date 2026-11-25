@@ -41,6 +41,12 @@
 #     row. PICK_VALUES are then fixed values beside the edited one, and
 #     PICK_CURRENT and PICK_CHOICE may be any text.
 #   PICK_FORMAT[i]  function that shows the value: sets PICK_TEXT from $1.
+#   PICK_SUBMIT_TAB group ID of a root group without items, shown as the last
+#     tab: it lists the rows that change and asks to submit or cancel.
+#   PICK_SUBMIT_PROMPT the prompt while that tab is active.
+#   PICK_REVIEW     function run when that tab opens; reads PICK_RESULT.
+#   PICK_REVIEW_NOTE[i] set by it: the row's note in that tab, where a row that
+#     keeps its value is listed too; unset shows the value a row started from.
 #   PICK_CELLS[i]   tab-separated columns between the label and the value.
 #   PICK_COLUMNS    headers of the label, the cells, and the value.
 # Keys (pick_keybinding, and rows edited by it) additionally use:
@@ -115,7 +121,8 @@
 # configured aliases (default 1). Down from the last row wraps to the
 # first, and Up from the first wraps to the last; 0 retains bounded
 # movement.
-# Toggle moves a value row to its next value or edits it; Next value applies
+# Toggle moves a value row to its next value or edits it, and runs an action in
+# the submit tab; Next value applies
 # where a row has an edit function. All and Clear bindings apply only to
 # multiselect and dependencies; tab bindings only with PICK_TABS.
 # Back applies to every entry point but pick_run.
@@ -143,6 +150,9 @@ PICK_WRAP_NAVIGATION=1
 PICK_GROUP_TAIL=()
 PICK_TABS=0
 PICK_TAB=
+PICK_SUBMIT_TAB=
+PICK_SUBMIT_PROMPT=
+PICK_REVIEW=
 PICK_SEPARATOR_BEFORE=()
 PICK_SEPARATOR_LABEL=()
 PICK_DEPS=()
@@ -197,6 +207,8 @@ PICK_TAB_GROUPS=()
 PICK_TAB_CURSOR=()
 PICK_TAB_OFFSET=()
 PICK_TAB_AT=0
+PICK_SUBMIT_GROUP=-1
+PICK_REVIEW_NOTE=()
 PICK_DEP_ROWS=()
 PICK_ON=()
 PICK_MISSING=()

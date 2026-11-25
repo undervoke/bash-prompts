@@ -87,7 +87,8 @@ pick_render() {
     PICK_FRAME=()
     PICK_FRAME_STYLE=()
     PICK_FRAME_SPANS=()
-    if [[ -n ${PICK_PROMPT-} ]]; then title=$PICK_PROMPT
+    if pick_on_submit_page; then title=${PICK_SUBMIT_PROMPT:-Submit these values?}
+    elif [[ -n ${PICK_PROMPT-} ]]; then title=$PICK_PROMPT
     elif [[ $PICK_MODE == single ]]; then title='Choose one item'
     else title='Select items'; fi
     counter=
@@ -160,6 +161,7 @@ pick_render_row() {
             PICK_ROW=${PICK_SEPARATOR_LABEL[${PICK_DREF[d]}]:-'---------------'}
             PICK_ROW_STYLE=$PICK_STYLE_MUTED
             ;;
+        empty) PICK_ROW='No changes.'; PICK_ROW_STYLE=$PICK_STYLE_MUTED ;;
         item) pick_item_line "${PICK_FOCUS[${PICK_DREF[d]}]}" "${PICK_DREF[d]}" ;;
     esac
 }
@@ -178,16 +180,18 @@ pick_group_title() {
     # checkboxes, or a tab's value rows that change.
     PICK_TITLE=${PICK_GLABEL[$1]}
     [[ $PICK_MODE != single ]] || return 0
-    pick_group_counts "$1"
+    # The submit tab counts the rows of every tab.
+    if (($1 == PICK_SUBMIT_GROUP)); then pick_group_counts 0
+    else pick_group_counts "$1"; fi
     if [[ $PICK_MODE != choices ]]; then PICK_TITLE="$PICK_TITLE ($PICK_GSEL/$PICK_GTOT)"
     elif ((PICK_GSEL)); then PICK_TITLE="$PICK_TITLE ($PICK_GSEL)"; fi
 }
 
 pick_tab_line() {
-    # $1 = width; sets PICK_ROW and PICK_ROW_SPANS. The active tab always
-    # shows. Its neighbors join while they fit, and < > stand for the tabs
-    # left out.
-    local cols=$1 n=${#PICK_TAB_GROUPS[@]} k first last used total grew
+    # $1 = width; sets PICK_ROW and PICK_ROW_SPANS. The active tab and the
+    # submit tab, which is the last one, always show. The neighbors of the
+    # active one join while they fit, and < > stand for the tabs left out.
+    local cols=$1 n=${#PICK_TAB_GROUPS[@]} k m first last used total grew
     local -a text=() cells=()
     total=0
     for ((k=0; k<n; k++)); do
@@ -199,14 +203,20 @@ pick_tab_line() {
         total=$((total + PICK_WIDTH))
     done
     total=$((total + n - 1))
-    first=0; last=$((n - 1))
+    m=$n
+    ((PICK_TAB_GROUPS[n - 1] != PICK_SUBMIT_GROUP)) || m=$((n - 1))
+    first=0; last=$((m - 1))
     if ((total > cols)); then
-        first=$PICK_TAB_AT; last=$PICK_TAB_AT
+        ((m == n)) || cols=$((cols - cells[m] - 1))
+        first=$PICK_TAB_AT
+        ((first < m)) || first=$((m - 1))
+        last=$first
         used=$((cells[first] + 2))
         grew=1
+        if ((PICK_TAB_AT == m && used > cols)); then first=$m; grew=0; fi
         while ((grew)); do
             grew=0
-            if ((last < n - 1)) && ((used + 1 + cells[last + 1] <= cols)); then
+            if ((last < m - 1)) && ((used + 1 + cells[last + 1] <= cols)); then
                 last=$((last + 1)); used=$((used + 1 + cells[last])); grew=1
             fi
             if ((first > 0)) && ((used + 1 + cells[first - 1] <= cols)); then
@@ -222,17 +232,40 @@ pick_tab_line() {
             PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW} PLAIN"
             PICK_ROW="$PICK_ROW "
         fi
-        PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW}"
-        if ((k == PICK_TAB_AT)); then PICK_ROW_SPANS="$PICK_ROW_SPANS TAB"
-        else PICK_ROW_SPANS="$PICK_ROW_SPANS PLAIN"; fi
-        PICK_ROW=$PICK_ROW${text[k]}
+        pick_add_tab "$k" "${text[k]}"
     done
+    ((last == m - 1)) || PICK_ROW="$PICK_ROW>"
+    if ((m < n)); then
+        PICK_ROW="$PICK_ROW "
+        pick_add_tab "$m" "${text[m]}"
+    fi
+}
+
+pick_add_tab() {
+    # $1 = tab, $2 = its text; adds it to PICK_ROW.
+    PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW}"
+    if (($1 == PICK_TAB_AT)); then PICK_ROW_SPANS="$PICK_ROW_SPANS TAB"
+    else PICK_ROW_SPANS="$PICK_ROW_SPANS PLAIN"; fi
+    PICK_ROW=$PICK_ROW$2
     PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW} MUTED"
-    ((last == n - 1)) || PICK_ROW="$PICK_ROW>"
+}
+
+pick_submit_line() {
+    # $1 = focus position of an action on the submit page.
+    PICK_ROW=Submit
+    (($1 == 0)) || PICK_ROW=Cancel
+    PICK_ROW_STYLE=
+    PICK_ROW_SPANS=
+    PICK_NOTES=
+    if (($1 == PICK_CURSOR)); then
+        PICK_ROW="> $PICK_ROW"
+        PICK_ROW_STYLE=$PICK_STYLE_FOCUS
+    else PICK_ROW="  $PICK_ROW"; fi
 }
 
 pick_item_line() {
     local idx=$1 pos=$2 mark="[ ]" notes why= reqs= k j g indent=
+    if ((idx >= ${#PICK_LABEL[@]})); then pick_submit_line "$pos"; return 0; fi
     g=${PICK_IGROUP[idx]}
     for ((k=PICK_GLEVEL[PICK_ROOT]; k<PICK_GLEVEL[g]; k++)); do indent="$indent  "; done
     if [[ $PICK_MODE == choices ]]; then pick_value_line "$idx" "$pos" "$indent"; return 0; fi

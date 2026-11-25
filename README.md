@@ -191,7 +191,7 @@ root groups and each keeps its focus while the prompt is open. `PICK_TAB` is the
 active tab's group ID, input and output; an ID without included rows starts at
 the first tab. Nested groups keep their headers inside a tab.
 
-On a narrow terminal the active tab stays visible and `<` and `>` stand for the
+On a narrow terminal the active tab and the [submit tab](#submit-tab) stay visible and `<` and `>` stand for the
 tabs left out. Without reverse video the active tab is bracketed.
 
 ## Value rows
@@ -242,6 +242,27 @@ value first in `PICK_VALUES`: that is the fallback when the picked value is
 
 It uses the `0`/`1`/`2`/`3` return contract of `pick_multiselect`; on `3`,
 `PICK_CHOICE` and `PICK_RESULT` hold the unsubmitted state.
+
+### Submit tab
+
+With `PICK_TABS=1`, `PICK_SUBMIT_TAB` names a root group without items, shown as
+the last tab. It lists the rows that change in every tab, under their groups, and
+starts with two actions, Submit and Cancel, that Toggle runs. To leave it as the
+only way to submit, take Enter from Submit:
+
+```bash
+pick_group submit 'Submit'
+PICK_SUBMIT_TAB=submit
+PICK_SUBMIT_PROMPT='Apply these changes?'
+PICK_KEYS_TOGGLE=(Space Enter)
+PICK_KEYS_SUBMIT=()
+```
+
+| Variable | Contract |
+|---|---|
+| `PICK_SUBMIT_PROMPT` | The line above the tabs while this one is active. |
+| `PICK_REVIEW` | Function called when the tab opens. It finds the values in `PICK_RESULT` and fills `PICK_REVIEW_NOTE`. It must not print or read standard input. |
+| `PICK_REVIEW_NOTE` | Note of a row in the tab, which is empty when `PICK_REVIEW` is called. A row with one is listed even if it keeps its value; a changed row without one shows the value it started from. |
 
 ### Edit rows, formats, and columns
 
@@ -470,8 +491,8 @@ The hint below the list shows the active bindings, and a message appears above i
 and returns `3` on Back with the current flags. Read-only checkbox states are
 preserved by Toggle, All, Clear, and dependent deselection.
 
-`pick_choices` moves the focused row to its next allowed value on Toggle, or
-edits it, submits any values but a shared key, and returns `3` on Back. Prev/next
+`pick_choices` moves the focused row to its next allowed value on Toggle,
+edits it, or runs the focused action of the submit tab, submits any values but a shared key, and returns `3` on Back. Prev/next
 tab keys wrap around. `pick_keybinding` uses Toggle, Submit, Back, and Cancel;
 while a key is typed, Enter takes it, Esc leaves it, and letters are text.
 
@@ -547,7 +568,7 @@ repeated labels with distinct IDs, and notes. `dependencies` shows
 transitive automatic selection and cascading deselection, then prints each
 selected ID as direct or auto with the selected IDs that require it; `lock`
 shows the alternative locking behavior. `choices` shows value rows in tabs,
-with rows that turn off with what they require; `keybinding` shows a key per row
+with rows that turn off with what they require and a submit tab; `keybinding` shows a key per row
 in columns, with a check, and a key on its own. `nested` demonstrates four levels,
 parent counts, tail ordering, separators inside and between groups, and
 Left/Right group jumps at depth 2; `separators` demonstrates dividers in a
