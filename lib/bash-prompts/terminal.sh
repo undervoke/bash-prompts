@@ -71,14 +71,25 @@ pick_frame_home() {
     for ((r=1; r<PICK_PREV_COUNT; r++)); do PICK_HOME+=$PICK_UP; done
 }
 
+pick_erase_frame() {
+    # iTerm2 copies an alternate screen that is erased whole, or from its
+    # first cell on, to the scrollback; rows erased one by one leave nothing.
+    local r out
+    if ((PICK_SCREEN)); then
+        out=$'\r'$PICK_EL
+        for ((r=1; r<PICK_PREV_COUNT; r++)); do out+=$PICK_UP$PICK_EL; done
+    else
+        pick_frame_home
+        out=$PICK_HOME$PICK_ED
+    fi
+    printf '%s' "$out"
+}
+
 pick_cleanup_term() {
     # The prompt is drawn inline below the caller's output; erasing it leaves
     # the cursor where the prompt started, so the caller's next output
     # continues from there.
-    if ((PICK_PREV_COUNT > 0)) && pick_inline; then
-        pick_frame_home
-        printf '%s%s' "$PICK_HOME" "$PICK_ED"
-    fi
+    if ((PICK_PREV_COUNT > 0)) && pick_inline; then pick_erase_frame; fi
     PICK_PREV_COUNT=0
     if ((PICK_CIVIS)); then tput cnorm || true; fi
     PICK_CIVIS=0
@@ -95,7 +106,16 @@ pick_clear_screen() {
     # pending interrupt already restored the screen, so no caller can
     # clear over it by missing its own check.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-    if ((PICK_CLEAR)); then tput clear || true; else printf '\n\n\n'; fi
+    if ((PICK_SCREEN)); then pick_blank_screen
+    elif ((PICK_CLEAR)); then tput clear || true
+    else printf '\n\n\n'; fi
+}
+
+pick_blank_screen() {
+    # Row by row, as in pick_erase_frame.
+    local r out=$PICK_TOP$PICK_EL
+    for ((r=1; r<PICK_TROWS; r++)); do out+=$'\n'$PICK_EL; done
+    printf '%s%s' "$out" "$PICK_TOP"
 }
 
 pick_term_size() {

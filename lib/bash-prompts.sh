@@ -66,6 +66,8 @@
 #   Returns 0 submitted, 1 on cancellation or failure (0.1 compatibility).
 # pick_close: noninteractive dependency closure from DIRECT + retained AUTO.
 #   Returns 0 or 1; failed closure leaves selection state unchanged.
+# pick_screen <command> [args]: runs a flow of prompts on the alternate screen
+#   and returns its status. The screen closes however the flow ends.
 # pick_find_id / pick_find_label <value>: print index or -1.
 # pick_selected_indices: fills PICK_SELECTED_INDICES with included rows whose
 #   PICK_STATE is 1, in input order.
@@ -102,7 +104,8 @@
 #   row, reversed active tab, yellow changed value and warning, dim notes,
 #   read-only rows, separators and key hint, red error. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
 #   capability omits colors while supported bold and dim remain.
-# Prompts draw inline at the cursor and erase themselves when they end.
+# Prompts draw inline at the cursor and erase themselves when they end, also
+#   on the alternate screen.
 # The API uses one active PICK_* state in the calling Bash process.
 PICK_VERSION="0.7.0"
 
@@ -179,6 +182,13 @@ PICK_CIVIS=0
 PICK_UP=
 PICK_ED=
 PICK_HOME=
+PICK_TOP=
+PICK_SCREEN=0
+PICK_SCREEN_LEAVE=
+PICK_SCREEN_STTY=
+PICK_SCREEN_HELD=
+PICK_SCREEN_TRAPS=
+PICK_SCREEN_EXIT=
 PICK_CLIPPED=
 PICK_CELLS=0
 PICK_ELLIPSIS=
@@ -248,6 +258,7 @@ source "$_BASH_PROMPTS_DIR/bash-prompts/groups.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/selection.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/choices.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/terminal.sh" || return 1
+source "$_BASH_PROMPTS_DIR/bash-prompts/screen.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/keys.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/render.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/interact.sh" || return 1

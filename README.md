@@ -9,7 +9,7 @@ Grouped interactive selection in Bash:
 - `pick_run`: dependency-aware checked items.
 
 All use the same terminal UI. Requires Bash 3.2+ and system `tput`, `stty`,
-and `dd`.
+`dd`, `mktemp`, `cat`, and `rm`.
 
 The prompt is drawn inline at the cursor, below earlier output, and erased
 when it ends, leaving the cursor where it started; print the result or the
@@ -241,6 +241,15 @@ value first in `PICK_VALUES`: that is the fallback when the picked value is
 It uses the `0`/`1`/`2`/`3` return contract of `pick_multiselect`; on `3`,
 `PICK_CHOICE` and `PICK_RESULT` hold the unsubmitted state.
 
+## Alternate screen
+
+`pick_screen <command> [args]` runs a flow of prompts in the calling shell on
+the terminal's alternate screen and returns its status. Prompts draw at the top,
+and the earlier text comes back when the flow ends, also on exit or a signal.
+Without an alternate screen the flow runs inline. The screen has no scrollback,
+so print results after it closes. Suspend keys are off while it is open, and
+text the flow writes to a terminal's standard error is printed once it closes.
+
 ## Dependency-aware selection
 
 `pick_dependencies` preserves the supplied `PICK_STATE`. Selecting an item adds
@@ -424,6 +433,7 @@ Use a name to run an example directly and return its exit status:
 ./demo nested
 ./demo separators
 ./demo wizard
+./demo screen
 NO_COLOR=1 ./demo checkbox
 ```
 
