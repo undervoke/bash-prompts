@@ -135,7 +135,7 @@
 # Prompts draw inline at the cursor and erase themselves when they end, also
 #   on the alternate screen.
 # The API uses one active PICK_* state in the calling Bash process.
-PICK_VERSION="0.9.1"
+PICK_VERSION="0.10.0"
 
 PICK_ID=()
 PICK_LABEL=()

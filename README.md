@@ -23,7 +23,7 @@ Exercised on macOS; other platforms are not yet verified.
 Use a pinned release asset; no build step is needed:
 
 ```bash
-curl -fsSLO https://github.com/undervoke/bash-prompts/releases/download/v0.9.1/bash-prompts.sh
+curl -fsSLO https://github.com/undervoke/bash-prompts/releases/download/v0.10.0/bash-prompts.sh
 source ./bash-prompts.sh
 ```
 
@@ -591,7 +591,7 @@ The replaced j/k, a/n and q/Q bindings are inactive in this example.
 `bash scripts/bundle.sh` regenerates the standalone `dist/bash-prompts.sh`
 from `lib/bash-prompts.sh` and `lib/bash-prompts/`; the output is
 deterministic and ignored by Git. To publish, set `PICK_VERSION`, then push
-the matching tag (`v0.9.1` for `"0.9.1"`): the release workflow rebuilds
+the matching tag (`v0.10.0` for `"0.10.0"`): the release workflow rebuilds
 the bundle, checks it, and attaches `bash-prompts.sh` and `LICENSE` to the
 GitHub Release.
 
