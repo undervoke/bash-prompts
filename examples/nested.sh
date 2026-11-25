@@ -25,9 +25,6 @@ PICK_KEYS_PREV_GROUP=(Left h)
 PICK_KEYS_NEXT_GROUP=(Right l)
 pick_separator formatter '--- Formatting ---'
 pick_separator web '--- Reference material ---'
-PICK_FOCUS_COLOR=cyan
-PICK_SELECTED_COLOR=green
-PICK_GROUP_COLOR=blue
 
 if pick_multiselect; then
     printf '%s\n' "$PICK_PROMPT"

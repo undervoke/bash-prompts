@@ -12,10 +12,6 @@ format_ids=(markdown html pdf)
 format_labels=(Markdown HTML PDF)
 format_state=(1 0 0)
 
-PICK_FOCUS_COLOR=cyan
-PICK_SELECTED_COLOR=green
-PICK_GROUP_COLOR=blue
-
 # $1 = labels array name, $2 = state array name; prints checked labels.
 checked_labels() {
     local labels="$1[@]" states="$2[@]" i out=

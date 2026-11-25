@@ -1,4 +1,4 @@
-# bash-prompts: terminal setup and teardown, signals, colors, widths, frame output.
+# bash-prompts: terminal setup and teardown, signals, styles, widths, frame output.
 # Function definitions only; sourced in the caller shell by lib/bash-prompts.sh.
 
 pick_traps_save() {
@@ -38,7 +38,7 @@ pick_on_term() {
 
 pick_setup_term() {
     [[ -t 0 && -t 1 ]] || return 1
-    pick_prepare_colors || return 1
+    pick_prepare_styles
     PICK_SAVED_STTY=$(stty -g) || return 1
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
     # ISIG stays enabled so Ctrl-C still reaches the caller's signal handler.
@@ -111,36 +111,25 @@ pick_term_size() {
     ((PICK_TCOLS > 0)) || PICK_TCOLS=80
 }
 
-pick_color_number() {
-    case $1 in
-        ''|default) printf '%s' -1 ;;
-        black) printf 0 ;; red) printf 1 ;; green) printf 2 ;;
-        yellow) printf 3 ;; blue) printf 4 ;; magenta) printf 5 ;;
-        cyan) printf 6 ;; white) printf 7 ;;
-        *) pick_err "unknown color '$1'"; return 1 ;;
-    esac
-}
-
-pick_prepare_colors() {
-    local focus selected group colors
-    PICK_STYLE_FOCUS=; PICK_STYLE_SELECTED=; PICK_STYLE_GROUP=
-    PICK_STYLE_TITLE=; PICK_STYLE_HINT=; PICK_STYLE_RESET=
-    focus=$(pick_color_number "${PICK_FOCUS_COLOR-}") || return 1
-    selected=$(pick_color_number "${PICK_SELECTED_COLOR-}") || return 1
-    group=$(pick_color_number "${PICK_GROUP_COLOR-}") || return 1
+pick_prepare_styles() {
+    # Each role has one look in every prompt. The ANSI colors leave the
+    # shades to the terminal's theme.
+    local bold colors
+    PICK_STYLE_TITLE=; PICK_STYLE_GROUP=; PICK_STYLE_FOCUS=; PICK_STYLE_MUTED=
+    PICK_STYLE_RESET=
     [[ -z ${NO_COLOR-} && ${TERM-} != dumb ]] || return 0
     PICK_STYLE_RESET=$(tput sgr0 2>/dev/null) || { PICK_STYLE_RESET=; return 0; }
     [[ -n $PICK_STYLE_RESET ]] || return 0
-    # The title stands out and the key hint recedes without any color.
-    PICK_STYLE_TITLE=$(tput bold 2>/dev/null || true)
-    PICK_STYLE_HINT=$(tput dim 2>/dev/null || true)
-    ((focus >= 0 || selected >= 0 || group >= 0)) || return 0
+    # These stand out or recede without any color.
+    bold=$(tput bold 2>/dev/null || true)
+    PICK_STYLE_TITLE=$bold
+    PICK_STYLE_FOCUS=$bold
+    PICK_STYLE_MUTED=$(tput dim 2>/dev/null || true)
     colors=$(tput colors 2>/dev/null) || return 0
     case $colors in ''|*[!0-9]*) return 0 ;; esac
     ((colors >= 8)) || return 0
-    if ((focus >= 0)); then PICK_STYLE_FOCUS=$(tput setaf "$focus" 2>/dev/null || true); fi
-    if ((selected >= 0)); then PICK_STYLE_SELECTED=$(tput setaf "$selected" 2>/dev/null || true); fi
-    if ((group >= 0)); then PICK_STYLE_GROUP=$(tput setaf "$group" 2>/dev/null || true); fi
+    PICK_STYLE_GROUP=$(tput setaf 6 2>/dev/null || true)
+    PICK_STYLE_TITLE=$bold$PICK_STYLE_GROUP
     return 0
 }
 

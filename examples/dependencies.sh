@@ -9,9 +9,6 @@ PICK_ID=(base addon bundle notes)
 PICK_LABEL=('Base, shared' 'Add-on' 'Bundle' 'Notes')
 PICK_GROUP=(Components Components Presets Documents)
 PICK_DEPS=('' 'base' 'addon' '')
-PICK_FOCUS_COLOR=cyan
-PICK_SELECTED_COLOR=green
-PICK_GROUP_COLOR=blue
 
 if pick_run; then
     printf '%s\n' "$PICK_PROMPT"

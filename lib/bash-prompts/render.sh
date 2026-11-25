@@ -97,7 +97,7 @@ pick_render() {
     done
     ((spacer)) && PICK_FRAME[${#PICK_FRAME[@]}]=
     for ((d=0; d<hint_rows; d++)); do
-        PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_STYLE_HINT
+        PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_STYLE_MUTED
         PICK_FRAME[${#PICK_FRAME[@]}]=${PICK_HINT[d]}
     done
     ((show_msg)) && PICK_FRAME[${#PICK_FRAME[@]}]=$PICK_MSG
@@ -126,7 +126,7 @@ pick_render_row() {
         header) pick_header_line "${PICK_DREF[d]}" ;;
         separator)
             PICK_ROW=${PICK_SEPARATOR_LABEL[${PICK_DREF[d]}]:-'---------------'}
-            PICK_ROW_STYLE=$PICK_STYLE_HINT
+            PICK_ROW_STYLE=$PICK_STYLE_MUTED
             ;;
         item) pick_item_line "${PICK_FOCUS[${PICK_DREF[d]}]}" "${PICK_DREF[d]}" ;;
     esac
@@ -145,13 +145,13 @@ pick_header_line() {
 pick_item_line() {
     local idx=$1 pos=$2 mark="[ ]" notes= reqs= k j g indent=
     PICK_ROW_STYLE=
+    [[ -z ${PICK_DISABLED[idx]:-} ]] || PICK_ROW_STYLE=$PICK_STYLE_MUTED
     g=${PICK_IGROUP[idx]}
     for ((k=0; k<PICK_GLEVEL[g]; k++)); do indent="$indent  "; done
     if [[ $PICK_MODE == single ]]; then
         mark=
     elif [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
         mark="[x]"
-        PICK_ROW_STYLE=$PICK_STYLE_SELECTED
     fi
     # A checked row explains what keeps it checked; an unchecked row shows
     # what checking it would add.

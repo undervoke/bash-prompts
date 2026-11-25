@@ -9,7 +9,6 @@ PICK_LABEL=('Open file' 'Edit file' 'Save file' 'Quit')
 pick_separator open '--- File actions ---'
 pick_separator save '--- Write actions ---'
 pick_separator quit
-PICK_FOCUS_COLOR=cyan
 
 if pick_select; then
     printf '%s %s\n' "$PICK_PROMPT" "$PICK_VALUE"

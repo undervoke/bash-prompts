@@ -78,11 +78,10 @@
 # Toggle, All, and Clear bindings apply only to multiselect and dependencies.
 # Back applies to pick_select, pick_multiselect, and pick_dependencies.
 #
-# Optional colors: PICK_FOCUS_COLOR, PICK_SELECTED_COLOR, PICK_GROUP_COLOR.
-#   Empty/default means terminal default. Names: black, red, green, yellow,
-#   blue, magenta, cyan, white. Focus takes precedence over selected color.
-#   Nonempty NO_COLOR or TERM=dumb gives plain text; missing color capability
-#   omits colors while supported bold title and dim hint remain.
+# Styles are fixed by role: bold cyan title, cyan group headers, bold focused
+#   row, dim read-only rows, separators and key hint. Nonempty NO_COLOR or
+#   TERM=dumb gives plain text; missing color capability omits colors while
+#   supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
 # The API uses one active PICK_* state in the calling Bash process.
 PICK_VERSION="0.6.1"
@@ -146,11 +145,10 @@ PICK_FRAME=()
 PICK_FRAME_STYLE=()
 PICK_ROW=
 PICK_ROW_STYLE=
-PICK_STYLE_FOCUS=
-PICK_STYLE_SELECTED=
-PICK_STYLE_GROUP=
 PICK_STYLE_TITLE=
-PICK_STYLE_HINT=
+PICK_STYLE_GROUP=
+PICK_STYLE_FOCUS=
+PICK_STYLE_MUTED=
 PICK_STYLE_RESET=
 PICK_SAVED_INT=
 PICK_SAVED_TERM=

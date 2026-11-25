@@ -39,7 +39,7 @@ pick_interact() {
         PICK_SAVED_STTY=
         pick_traps_restore
         [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-        pick_err "interactive selection needs a terminal and valid options"
+        pick_err "interactive selection needs a terminal"
         return 2
     fi
     pick_recalc_locks

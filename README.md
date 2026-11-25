@@ -224,22 +224,20 @@ referenced IDs are nonempty, comma-free, and have no leading/trailing spaces
 or tabs. Display labels are independent of this grammar. Ordered edges make
 this dependency contract acyclic. Selected dependencies must be available.
 
-## Colors
+## Styles
 
-```bash
-PICK_FOCUS_COLOR=cyan
-PICK_SELECTED_COLOR=green
-PICK_GROUP_COLOR=blue
-```
+Each part of a prompt has one look, following the text roles of
+[teakit](https://github.com/undervoke/teakit):
 
-Colors are optional for all interactive entry points and default to terminal colors.
-Independently of colors, the title is bold and the key hint dim.
-Supported values are empty, `default`, `black`, `red`, `green`, `yellow`,
-`blue`, `magenta`, `cyan`, and `white`. Focus color takes precedence over
-selected color. Selected color applies to checked rows. A nonempty `NO_COLOR`
-or `TERM=dumb` produces plain text; without color capability only bold and
-dim apply.
-Unknown names produce an input error.
+| Part | Look |
+|---|---|
+| Title | Bold cyan |
+| Group header | Cyan |
+| Focused row | Bold |
+| Read-only row, separator, key hint | Dim |
+
+Checked rows differ only by `[x]`. A nonempty `NO_COLOR` or `TERM=dumb`
+produces plain text; without color capability only bold and dim apply.
 
 ## Keys
 
@@ -356,8 +354,8 @@ NO_COLOR=1 ./demo checkbox
 
 Sources are in `examples/`; each script can also be run directly with Bash.
 The examples display a prompt and print its result. `select` shows single
-selection with an initial focus; `checkbox` shows initial checked state,
-repeated labels with distinct IDs, and colors. `dependencies` shows
+selection with an initial focus; `checkbox` shows initial checked state and
+repeated labels with distinct IDs. `dependencies` shows
 transitive automatic selection and cascading deselection, then prints each
 selected ID as direct or auto with the selected IDs that require it; `lock`
 shows the alternative locking behavior. `nested` demonstrates four levels,

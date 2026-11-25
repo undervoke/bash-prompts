@@ -16,9 +16,6 @@ PICK_KEYS_CLEAR=(C)
 PICK_KEYS_SUBMIT=(Enter f)
 PICK_KEYS_CANCEL=(Esc z)
 
-PICK_FOCUS_COLOR=cyan
-PICK_SELECTED_COLOR=green
-
 if pick_multiselect; then
     ids=
     pick_selected_indices

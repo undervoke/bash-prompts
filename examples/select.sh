@@ -8,8 +8,6 @@ PICK_ID=(terminal editor browser)
 PICK_LABEL=(Terminal Editor Browser)
 PICK_GROUP=(Workspace Workspace Tools)
 PICK_VALUE=editor
-PICK_FOCUS_COLOR=cyan
-PICK_GROUP_COLOR=blue
 
 if pick_select; then
     printf '%s %s\n' "$PICK_PROMPT" "$PICK_VALUE"
