@@ -429,7 +429,7 @@ Use a name to run an example directly and return its exit status:
 ./demo dependencies
 ./demo lock
 ./demo choices
-./demo keybindings
+./demo keys
 ./demo nested
 ./demo separators
 ./demo wizard
@@ -457,7 +457,7 @@ returns to the review, Enter on Finish prints the result. Esc or `q` cancels.
 The script keeps its own answers and step order; the library supplies only
 the prompts and the Back return status.
 
-`examples/keybindings.sh` uses w/s or arrows to move, x/Space to toggle,
+`examples/keys.sh` uses w/s or arrows to move, x/Space to toggle,
 uppercase A/C to select/clear all, f/Enter to submit, and z/Esc to cancel.
 The replaced j/k, a/n and q/Q bindings are inactive in this example.
 
