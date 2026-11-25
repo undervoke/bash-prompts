@@ -116,7 +116,7 @@ pick_prepare_styles() {
     # shades to the terminal's theme.
     local bold colors
     PICK_STYLE_TITLE=; PICK_STYLE_GROUP=; PICK_STYLE_FOCUS=; PICK_STYLE_MUTED=
-    PICK_STYLE_RESET=
+    PICK_STYLE_WARNING=; PICK_STYLE_ERROR=; PICK_STYLE_RESET=
     [[ -z ${NO_COLOR-} && ${TERM-} != dumb ]] || return 0
     PICK_STYLE_RESET=$(tput sgr0 2>/dev/null) || { PICK_STYLE_RESET=; return 0; }
     [[ -n $PICK_STYLE_RESET ]] || return 0
@@ -128,6 +128,8 @@ pick_prepare_styles() {
     colors=$(tput colors 2>/dev/null) || return 0
     case $colors in ''|*[!0-9]*) return 0 ;; esac
     ((colors >= 8)) || return 0
+    PICK_STYLE_ERROR=$(tput setaf 1 2>/dev/null || true)
+    PICK_STYLE_WARNING=$(tput setaf 3 2>/dev/null || true)
     PICK_STYLE_GROUP=$(tput setaf 6 2>/dev/null || true)
     PICK_STYLE_TITLE=$bold$PICK_STYLE_GROUP
     return 0
@@ -166,6 +168,24 @@ pick_clip() {
         i=$((i + len))
     done
     PICK_CLIPPED=${text:0:i}
+}
+
+pick_wrap() {
+    # $1 = text, $2 = cells; fills PICK_WRAPPED with the text folded at
+    # spaces. A word wider than a line is left for painting to clip.
+    local text=$1 max=$2 line= word
+    PICK_WRAPPED=()
+    while true; do
+        word=${text%% *}
+        pick_clip "$line${line:+ }$word" "$max"
+        if [[ -n $line && $PICK_CLIPPED != "$line $word" ]]; then
+            PICK_WRAPPED[${#PICK_WRAPPED[@]}]=$line
+            line=$word
+        else line="$line${line:+ }$word"; fi
+        [[ $text == *' '* ]] || break
+        text=${text#* }
+    done
+    [[ -z $line ]] || PICK_WRAPPED[${#PICK_WRAPPED[@]}]=$line
 }
 
 pick_paint_line() {

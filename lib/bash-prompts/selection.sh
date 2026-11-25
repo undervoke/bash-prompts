@@ -190,7 +190,7 @@ pick_action() {
     case $action in
         toggle)
             idx=${PICK_FOCUS[PICK_CURSOR]}
-            if [[ -n ${PICK_DISABLED[idx]:-} ]]; then PICK_MSG=${PICK_DISABLED[idx]}; return 0; fi
+            if [[ -n ${PICK_DISABLED[idx]:-} ]]; then pick_message "$PICK_STYLE_ERROR" "${PICK_DISABLED[idx]}"; return 0; fi
             PICK_STATE[idx]=$((1 - ${PICK_STATE[idx]:-0}))
             ;;
         all|clear)
@@ -207,10 +207,10 @@ pick_action() {
 pick_toggle() {
     local idx depnames
     idx=${PICK_FOCUS[PICK_CURSOR]}
-    if [[ -n ${PICK_DISABLED[idx]:-} ]]; then PICK_MSG=${PICK_DISABLED[idx]}; return 0; fi
+    if [[ -n ${PICK_DISABLED[idx]:-} ]]; then pick_message "$PICK_STYLE_ERROR" "${PICK_DISABLED[idx]}"; return 0; fi
     depnames=$(pick_locked_by "$idx")
     if [[ ${PICK_STATE[idx]:-0} == 1 ]]; then
-        if [[ -n $depnames ]]; then PICK_MSG="${PICK_LABEL[idx]} stays checked: required by $depnames."; return 0; fi
+        if [[ -n $depnames ]]; then pick_message "$PICK_STYLE_ERROR" "${PICK_LABEL[idx]} stays checked: required by $depnames."; return 0; fi
         pick_deselect "$idx"
         pick_recalc_locks
         return 0
@@ -268,12 +268,12 @@ pick_deselect() {
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         if [[ -n ${PICK_DISABLED[i]:-} && ${PICK_STATE[i]:-0} != ${PICK_SNAP_STATE[i]:-0} ]]; then
             pick_restore_snap
-            PICK_MSG="${PICK_LABEL[i]}: ${PICK_DISABLED[i]}"
+            pick_message "$PICK_STYLE_ERROR" "${PICK_LABEL[i]}: ${PICK_DISABLED[i]}"
             return 0
         fi
     done
     PICK_MSG=
-    [[ -z $removed ]] || PICK_MSG="Also unchecked $removed."
+    [[ -z $removed ]] || pick_message "$PICK_STYLE_WARNING" "Also unchecked $removed."
     return 0
 }
 
@@ -308,7 +308,7 @@ pick_check_all() {
     fi
     PICK_QUIET=0
     pick_recalc_locks
-    PICK_MSG="Checked all items."
+    pick_message '' "Checked all items."
 }
 
 pick_clear_directs() {
@@ -342,5 +342,5 @@ pick_clear_directs() {
     fi
     PICK_QUIET=0
     pick_recalc_locks
-    PICK_MSG="Cleared your choices; auto-checked items stay until unchecked."
+    pick_message '' "Cleared your choices; auto-checked items stay until unchecked."
 }

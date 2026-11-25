@@ -5,11 +5,16 @@ pick_err() {
     # With PICK_QUIET set (interactive use), route the message to the
     # on-screen notice instead of writing over the terminal frame.
     if [[ ${PICK_QUIET:-0} == 1 ]]; then
-        if [[ -n ${PICK_MSG-} ]]; then PICK_MSG="$PICK_MSG; $*"
-        else PICK_MSG="$*"; fi
+        pick_message "$PICK_STYLE_ERROR" "${PICK_MSG:+$PICK_MSG; }$*"
     else
         printf 'pick: %s\n' "$*" >&2
     fi
+}
+
+pick_message() {
+    # $1 = style, $2 = text shown above the key hint until the next action.
+    PICK_MSG_STYLE=$1
+    PICK_MSG=$2
 }
 
 pick_trim() {

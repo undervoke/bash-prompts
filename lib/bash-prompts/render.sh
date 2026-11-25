@@ -31,25 +31,30 @@ pick_render() {
     # A pending interrupt means the terminal is already restored; build
     # nothing so no further frame is composed for a dead screen.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-    local rows cols h d total drow start end title counter avail show_title show_msg hint_rows spacer pinned g
+    local rows cols h d total drow start end title counter avail show_title msg_rows msg_spacer hint_rows spacer pinned g
     pick_term_size
     rows=$PICK_TROWS
     cols=$PICK_TCOLS
     # The inline painter keeps the last column free.
     pick_hint "$((cols - 1))"
+    PICK_WRAPPED=()
+    [[ -z $PICK_MSG ]] || pick_wrap "$PICK_MSG" "$((cols - 1))"
     # The frame never exceeds the terminal height, or relative repainting
     # would lose rows that scrolled off. The list keeps at least one row;
-    # the title, message, hint lines, and spacer take what remains in that
+    # the title, message, hint lines, and spacers take what remains in that
     # order, and the list gets the rest, up to its length.
     total=${#PICK_DKIND[@]}
     avail=$((rows - 1))
-    show_title=0; show_msg=0; hint_rows=0; spacer=0
+    show_title=0; spacer=0; msg_spacer=0
     if ((avail > 0)); then show_title=1; avail=$((avail - 1)); fi
-    if [[ -n $PICK_MSG ]] && ((avail > 0)); then show_msg=1; avail=$((avail - 1)); fi
+    msg_rows=${#PICK_WRAPPED[@]}
+    ((msg_rows > avail)) && msg_rows=$avail
+    avail=$((avail - msg_rows))
     hint_rows=${#PICK_HINT[@]}
     ((hint_rows > avail)) && hint_rows=$avail
     avail=$((avail - hint_rows))
     if ((avail > 0)); then spacer=1; avail=$((avail - 1)); fi
+    if ((msg_rows > 0 && avail > 0)); then msg_spacer=1; avail=$((avail - 1)); fi
     h=$((avail + 1))
     ((h > total)) && h=$total
     drow=${PICK_FOCUS_ROW[PICK_CURSOR]:-0}
@@ -100,8 +105,9 @@ pick_render() {
         pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_TAIL"
     done
     ((spacer)) && pick_frame_row ''
+    for ((d=0; d<msg_rows; d++)); do pick_frame_row "${PICK_WRAPPED[d]}" "$PICK_MSG_STYLE"; done
+    ((msg_spacer)) && pick_frame_row ''
     for ((d=0; d<hint_rows; d++)); do pick_frame_row "${PICK_HINT[d]}" "$PICK_STYLE_MUTED"; done
-    ((show_msg)) && pick_frame_row "$PICK_MSG"
     if [[ -n $PICK_PREV_ROWS && ( $rows != "$PICK_PREV_ROWS" || $cols != "$PICK_PREV_COLS" ) ]]; then
         # A resize may reflow the painted lines, so their height is unknown;
         # repaint from a cleared screen instead of erasing by line count.

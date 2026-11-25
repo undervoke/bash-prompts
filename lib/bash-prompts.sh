@@ -80,9 +80,9 @@
 # Back applies to pick_select, pick_multiselect, and pick_dependencies.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
-#   row, dim notes, read-only rows, separators and key hint. Nonempty NO_COLOR
-#   or TERM=dumb gives plain text; missing color capability omits colors while
-#   supported bold and dim remain.
+#   row, dim notes, read-only rows, separators and key hint, yellow warning,
+#   red error. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
+#   capability omits colors while supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
 # The API uses one active PICK_* state in the calling Bash process.
 PICK_VERSION="0.6.1"
@@ -115,6 +115,7 @@ PICK_FLOCK=()
 PICK_CURSOR=0
 PICK_OFFSET=0
 PICK_MSG=
+PICK_MSG_STYLE=
 PICK_GID=()
 PICK_GLABEL=()
 PICK_GPARENT=()
@@ -139,6 +140,7 @@ PICK_UP=
 PICK_ED=
 PICK_HOME=
 PICK_CLIPPED=
+PICK_WRAPPED=()
 PICK_LINE=
 PICK_EL=
 PICK_PREV_COUNT=0
@@ -154,6 +156,8 @@ PICK_STYLE_TITLE=
 PICK_STYLE_GROUP=
 PICK_STYLE_FOCUS=
 PICK_STYLE_MUTED=
+PICK_STYLE_WARNING=
+PICK_STYLE_ERROR=
 PICK_STYLE_RESET=
 PICK_SAVED_INT=
 PICK_SAVED_TERM=

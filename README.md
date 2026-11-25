@@ -99,7 +99,7 @@ on `3`, `PICK_VALUE` or `PICK_STATE` holds the unsubmitted state at that moment.
 
 Each named group gets a header; multi-selection headers show selected/total
 counts across its included descendants. The whole prompt fits the terminal
-height: on a short terminal the spacer, hint lines, message, and title give
+height: on a short terminal the spacers, hint lines, message, and title give
 way to keep at least one list row. Scrolled-off ancestor headers stay pinned;
 when space is tight, the nearest ancestors take priority and the focused
 item stays visible. The title shows the focused position while scrolling.
@@ -236,6 +236,8 @@ Each part of a prompt has one look, following the text roles of
 | Group header | Cyan |
 | Focused row | Bold |
 | Note, read-only row, separator, key hint | Dim |
+| Message that other rows were unchecked too | Yellow |
+| Message that refuses an action | Red |
 
 Checked rows differ only by `[x]`. A nonempty `NO_COLOR` or `TERM=dumb`
 produces plain text; without color capability only bold and dim apply.
@@ -286,7 +288,7 @@ Back is unbound by default; bind it to let a caller step backwards through
 its own sequence of prompts. Unknown tokens or conflicting actions fail before opening the UI:
 `pick_select`, `pick_multiselect`, and `pick_dependencies` return `2`; `pick_run` returns `1`.
 
-The hint below the list shows the active bindings, wrapped to the terminal width. The actions have these semantics:
+The hint below the list shows the active bindings, and a message appears above it until the next action; both wrap to the terminal width. The actions have these semantics:
 
 | Action | `pick_select` | `pick_multiselect` | `pick_run` |
 |---|---|---|---|

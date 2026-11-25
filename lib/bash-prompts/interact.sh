@@ -129,7 +129,7 @@ pick_interact() {
             back) rc=3; break ;;
             submit)
                 if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
-                if [[ $PICK_MODE == dependencies && ${PICK_ALLOW_EMPTY:-0} == 0 && $(pick_sel_count) == 0 ]]; then PICK_MSG="Check at least one item to submit."
+                if [[ $PICK_MODE == dependencies && ${PICK_ALLOW_EMPTY:-0} == 0 && $(pick_sel_count) == 0 ]]; then pick_message "$PICK_STYLE_ERROR" "Check at least one item to submit."
                 else rc=0; break; fi
                 ;;
         esac
