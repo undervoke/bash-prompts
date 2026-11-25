@@ -6,6 +6,7 @@
 # Input arrays are parallel, dense, zero-based.
 #   PICK_ID[i]      unique identity; if unset, uses PICK_LABEL[i].
 #   PICK_LABEL[i]   display text.
+#   PICK_NOTE[i]    optional muted text after the label, such as a status.
 #   PICK_GROUP[i]   group ID, or single-level text without group definitions.
 #   PICK_GROUP_ID / PICK_GROUP_LABEL / PICK_GROUP_PARENT: parallel group
 #     definitions; an empty parent is the root, an unset label uses the ID.
@@ -79,8 +80,8 @@
 # Back applies to pick_select, pick_multiselect, and pick_dependencies.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
-#   row, dim read-only rows, separators and key hint. Nonempty NO_COLOR or
-#   TERM=dumb gives plain text; missing color capability omits colors while
+#   row, dim notes, read-only rows, separators and key hint. Nonempty NO_COLOR
+#   or TERM=dumb gives plain text; missing color capability omits colors while
 #   supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end.
 # The API uses one active PICK_* state in the calling Bash process.
@@ -88,6 +89,7 @@ PICK_VERSION="0.6.1"
 
 PICK_ID=()
 PICK_LABEL=()
+PICK_NOTE=()
 PICK_GROUP=()
 PICK_GROUP_ID=()
 PICK_GROUP_LABEL=()
@@ -137,14 +139,17 @@ PICK_UP=
 PICK_ED=
 PICK_HOME=
 PICK_CLIPPED=
+PICK_LINE=
 PICK_EL=
 PICK_PREV_COUNT=0
 PICK_PREV_ROWS=
 PICK_PREV_COLS=
 PICK_FRAME=()
 PICK_FRAME_STYLE=()
+PICK_FRAME_TAIL=()
 PICK_ROW=
 PICK_ROW_STYLE=
+PICK_ROW_TAIL=
 PICK_STYLE_TITLE=
 PICK_STYLE_GROUP=
 PICK_STYLE_FOCUS=

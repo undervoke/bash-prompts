@@ -168,6 +168,19 @@ pick_clip() {
     PICK_CLIPPED=${text:0:i}
 }
 
+pick_paint_line() {
+    # Styles PICK_CLIPPED, the text of frame row $1, into PICK_LINE: the
+    # row's own style up to its tail offset, then muted.
+    local line=$PICK_CLIPPED tail= style=${PICK_FRAME_STYLE[$1]-} at=${PICK_FRAME_TAIL[$1]-}
+    if [[ -n $at ]] && ((at < ${#line})); then
+        tail=${line:at}
+        line=${line:0:at}
+    fi
+    if [[ -n $style && -n $line ]]; then line="$style$line$PICK_STYLE_RESET"; fi
+    if [[ -n $PICK_STYLE_MUTED && -n $tail ]]; then tail="$PICK_STYLE_MUTED$tail$PICK_STYLE_RESET"; fi
+    PICK_LINE=$line$tail
+}
+
 pick_emit_frame() {
     # $1 = width. The whole frame goes out in a single write that returns to
     # the frame's first line, with stale tails and leftover rows erased as
@@ -180,7 +193,7 @@ pick_emit_frame() {
     # bounded residue is inherent to async signals. No second write
     # follows a refusal, because every refusal breaks the main loop.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-    local cols=$1 i line n out style
+    local cols=$1 i n out
     n=${#PICK_FRAME[@]}
     if pick_inline; then
         pick_frame_home
@@ -190,10 +203,8 @@ pick_emit_frame() {
         cols=$((cols - 1))
         for ((i=0; i<n; i++)); do
             pick_clip "${PICK_FRAME[i]}" "$cols"
-            line=$PICK_CLIPPED
-            style=${PICK_FRAME_STYLE[i]-}
-            if [[ -n $style && -n $line ]]; then line="$style$line$PICK_STYLE_RESET"; fi
-            out+="$line$PICK_EL"
+            pick_paint_line "$i"
+            out+="$PICK_LINE$PICK_EL"
             if ((i < n-1)); then out+=$'\n'; fi
         done
         out+=$PICK_ED
@@ -207,10 +218,8 @@ pick_emit_frame() {
         out=
         for ((i=0; i<n; i++)); do
             pick_clip "${PICK_FRAME[i]}" "$cols"
-            line=$PICK_CLIPPED
-            style=${PICK_FRAME_STYLE[i]-}
-            if [[ -n $style ]]; then line="$style$line$PICK_STYLE_RESET"; fi
-            out+="$line"$'\n'
+            pick_paint_line "$i"
+            out+="$PICK_LINE"$'\n'
         done
         [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
         pick_clear_screen || return 1

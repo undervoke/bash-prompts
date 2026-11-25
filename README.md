@@ -81,6 +81,7 @@ Parallel, dense, zero-based arrays describe each row; `PICK_VALUE` is a scalar:
 |---|---|
 | `PICK_ID` | Unique identity. An unset entry falls back to its label. |
 | `PICK_LABEL` | Display text; labels may repeat when IDs differ. |
+| `PICK_NOTE` | Optional text after the label, such as a status. Messages name a row by its label alone. |
 | `PICK_GROUP` | Group ID when groups are declared; otherwise single-level group text. Empty or unset places an item at the root. |
 | `PICK_GROUP_TAIL` | Group IDs rendered after their siblings, including at the root. |
 | `PICK_VALID` | `0` excludes a row; `1` or unset includes it. |
@@ -201,7 +202,7 @@ fi
 cancellation or failure, preserving the 0.1 return contract. Checking a row
 checks its transitive prerequisites. An unchecked row lists what it requires;
 a checked row names the selected rows that require it, or `auto` when it was
-added automatically.
+added automatically. These follow the row's note.
 
 `PICK_DEPENDENCY_MODE=cascade` (the default) lets a prerequisite be unchecked
 and also unchecks every selected row that transitively depends on it. Those
@@ -234,7 +235,7 @@ Each part of a prompt has one look, following the text roles of
 | Title | Bold cyan |
 | Group header | Cyan |
 | Focused row | Bold |
-| Read-only row, separator, key hint | Dim |
+| Note, read-only row, separator, key hint | Dim |
 
 Checked rows differ only by `[x]`. A nonempty `NO_COLOR` or `TERM=dumb`
 produces plain text; without color capability only bold and dim apply.
@@ -354,8 +355,8 @@ NO_COLOR=1 ./demo checkbox
 
 Sources are in `examples/`; each script can also be run directly with Bash.
 The examples display a prompt and print its result. `select` shows single
-selection with an initial focus; `checkbox` shows initial checked state and
-repeated labels with distinct IDs. `dependencies` shows
+selection with an initial focus; `checkbox` shows initial checked state,
+repeated labels with distinct IDs, and notes. `dependencies` shows
 transitive automatic selection and cascading deselection, then prints each
 selected ID as direct or auto with the selected IDs that require it; `lock`
 shows the alternative locking behavior. `nested` demonstrates four levels,

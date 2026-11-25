@@ -19,6 +19,14 @@ pick_sticky() {
     return 0
 }
 
+pick_frame_row() {
+    # $1 = text, $2 = style, $3 = offset where the muted tail starts.
+    local n=${#PICK_FRAME[@]}
+    PICK_FRAME[n]=$1
+    PICK_FRAME_STYLE[n]=${2-}
+    PICK_FRAME_TAIL[n]=${3-}
+}
+
 pick_render() {
     # A pending interrupt means the terminal is already restored; build
     # nothing so no further frame is composed for a dead screen.
@@ -59,6 +67,7 @@ pick_render() {
     done
     PICK_FRAME=()
     PICK_FRAME_STYLE=()
+    PICK_FRAME_TAIL=()
     if [[ -n ${PICK_PROMPT-} ]]; then title=$PICK_PROMPT
     elif [[ $PICK_MODE == single ]]; then title='Choose one item'
     else title='Select items'; fi
@@ -68,16 +77,12 @@ pick_render() {
         pick_clip "$title" "$((cols - 1 - ${#counter}))"
         title=$PICK_CLIPPED$counter
     fi
-    if ((show_title)); then
-        PICK_FRAME[0]=$title
-        PICK_FRAME_STYLE[0]=$PICK_STYLE_TITLE
-    fi
+    ((show_title)) && pick_frame_row "$title" "$PICK_STYLE_TITLE"
     start=$PICK_OFFSET
     end=$((start + h))
     for g in "${PICK_STICKY[@]}"; do
         pick_header_line "$g"
-        PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_ROW_STYLE
-        PICK_FRAME[${#PICK_FRAME[@]}]=$PICK_ROW
+        pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE"
         end=$((end - 1))
     done
     # Automatic spacing at the top separates nothing. Trailing headers
@@ -92,15 +97,11 @@ pick_render() {
     done
     for ((d=start; d<end; d++)); do
         pick_render_row "$d"
-        PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_ROW_STYLE
-        PICK_FRAME[${#PICK_FRAME[@]}]=$PICK_ROW
+        pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_TAIL"
     done
-    ((spacer)) && PICK_FRAME[${#PICK_FRAME[@]}]=
-    for ((d=0; d<hint_rows; d++)); do
-        PICK_FRAME_STYLE[${#PICK_FRAME[@]}]=$PICK_STYLE_MUTED
-        PICK_FRAME[${#PICK_FRAME[@]}]=${PICK_HINT[d]}
-    done
-    ((show_msg)) && PICK_FRAME[${#PICK_FRAME[@]}]=$PICK_MSG
+    ((spacer)) && pick_frame_row ''
+    for ((d=0; d<hint_rows; d++)); do pick_frame_row "${PICK_HINT[d]}" "$PICK_STYLE_MUTED"; done
+    ((show_msg)) && pick_frame_row "$PICK_MSG"
     if [[ -n $PICK_PREV_ROWS && ( $rows != "$PICK_PREV_ROWS" || $cols != "$PICK_PREV_COLS" ) ]]; then
         # A resize may reflow the painted lines, so their height is unknown;
         # repaint from a cleared screen instead of erasing by line count.
@@ -118,10 +119,11 @@ pick_render() {
 }
 
 pick_render_row() {
-    # $1 = display row; sets PICK_ROW and PICK_ROW_STYLE.
+    # $1 = display row; sets PICK_ROW, PICK_ROW_STYLE, and PICK_ROW_TAIL.
     local d=$1
     PICK_ROW=
     PICK_ROW_STYLE=
+    PICK_ROW_TAIL=
     case ${PICK_DKIND[d]-} in
         header) pick_header_line "${PICK_DREF[d]}" ;;
         separator)
@@ -143,7 +145,8 @@ pick_header_line() {
 }
 
 pick_item_line() {
-    local idx=$1 pos=$2 mark="[ ]" notes= reqs= k j g indent=
+    local idx=$1 pos=$2 mark="[ ]" notes why= reqs= k j g indent=
+    notes=${PICK_NOTE[idx]-}
     PICK_ROW_STYLE=
     [[ -z ${PICK_DISABLED[idx]:-} ]] || PICK_ROW_STYLE=$PICK_STYLE_MUTED
     g=${PICK_IGROUP[idx]}
@@ -157,10 +160,10 @@ pick_item_line() {
     # what checking it would add.
     if [[ $PICK_MODE == dependencies && ${PICK_STATE[idx]:-0} == 1 ]]; then
         if [[ -n ${PICK_FLOCK[idx]:-} ]]; then
-            notes="required by ${PICK_FLOCK[idx]}"
-            [[ ${PICK_DEPENDENCY_MODE:-cascade} != lock ]] || notes="$notes; locked"
+            why="required by ${PICK_FLOCK[idx]}"
+            [[ ${PICK_DEPENDENCY_MODE:-cascade} != lock ]] || why="$why; locked"
         elif [[ ${PICK_DIRECT[idx]:-0} != 1 ]]; then
-            notes=auto
+            why=auto
         fi
     elif [[ $PICK_MODE == dependencies ]]; then
         pick_split_csv "${PICK_DEPS[idx]-}"
@@ -170,14 +173,15 @@ pick_item_line() {
             [[ -z $reqs ]] || reqs="$reqs, "
             reqs="$reqs${PICK_LABEL[j]}"
         done
-        [[ -z $reqs ]] || notes="requires $reqs"
+        [[ -z $reqs ]] || why="requires $reqs"
     fi
-    if [[ -n ${PICK_DISABLED[idx]:-} ]]; then
-        notes="${notes:+$notes; }${PICK_DISABLED[idx]}"
-    fi
+    [[ -z $why ]] || notes="${notes:+$notes; }$why"
+    [[ -z ${PICK_DISABLED[idx]:-} ]] || notes="${notes:+$notes; }${PICK_DISABLED[idx]}"
     if ((pos == PICK_CURSOR)); then
         PICK_ROW="$indent> "
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
     else PICK_ROW="$indent  "; fi
-    PICK_ROW="$PICK_ROW${mark:+$mark }${PICK_LABEL[idx]}${notes:+  ($notes)}"
+    PICK_ROW="$PICK_ROW${mark:+$mark }${PICK_LABEL[idx]}"
+    PICK_ROW_TAIL=${#PICK_ROW}
+    PICK_ROW="$PICK_ROW${notes:+  $notes}"
 }

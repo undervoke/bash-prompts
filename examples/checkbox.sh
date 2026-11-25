@@ -1,11 +1,12 @@
 #!/bin/bash
-# Ordinary multi-selection: initial state and independent IDs.
+# Ordinary multi-selection: initial state, independent IDs, and notes.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
 source "$ROOT/lib/bash-prompts.sh" || exit 2
 
 PICK_PROMPT='Which items should be included?'
 PICK_ID=(editor_primary formatter editor_notes drafts)
 PICK_LABEL=('Editor' 'Formatter' 'Editor' 'Notes, drafts')
+PICK_NOTE=(installed '' 'shared with the team' '')
 PICK_GROUP=(Tools Tools Documents Documents)
 PICK_STATE=(1 0 0 0)
 
