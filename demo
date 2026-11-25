@@ -2,13 +2,14 @@
 # Repository example launcher; each example owns its interaction and result.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
 
-names=(select checkbox dependencies lock choices keys nested separators wizard screen)
+names=(select checkbox dependencies lock choices keybinding keys nested separators wizard screen)
 descriptions=(
     'Choose one item from grouped options'
     'Check several items, some preselected, with notes'
     'Checking an item adds what it requires'
     'Required items stay locked while needed'
     'One value per row, in tabs'
+    'A key per action, in columns, and one key on its own'
     'The same checklist with remapped keys'
     'Recursive groups with tail ordering, separators, and jumps'
     'Display-only dividers without groups'
@@ -24,13 +25,13 @@ list_examples() {
 }
 
 usage() {
-    printf 'Usage: %s [select|checkbox|dependencies|lock|choices|keys|nested|separators|wizard|screen|--list]\n' "$0"
+    printf 'Usage: %s [select|checkbox|dependencies|lock|choices|keybinding|keys|nested|separators|wizard|screen|--list]\n' "$0"
 }
 
 run_example() {
     case $1 in
         lock) /bin/bash "$ROOT/examples/dependencies.sh" lock ;;
-        select|checkbox|dependencies|choices|keys|nested|separators|wizard|screen)
+        select|checkbox|dependencies|choices|keybinding|keys|nested|separators|wizard|screen)
             /bin/bash "$ROOT/examples/$1.sh"
             ;;
         *) printf 'Unknown example: %s\n' "$1" >&2; usage >&2; return 2 ;;

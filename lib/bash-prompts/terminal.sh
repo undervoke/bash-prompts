@@ -89,6 +89,7 @@ pick_cleanup_term() {
     # The prompt is drawn inline below the caller's output; erasing it leaves
     # the cursor where the prompt started, so the caller's next output
     # continues from there.
+    pick_capture_stop
     if ((PICK_PREV_COUNT > 0)) && pick_inline; then pick_erase_frame; fi
     PICK_PREV_COUNT=0
     if ((PICK_CIVIS)); then tput cnorm || true; fi
@@ -169,23 +170,31 @@ pick_prepare_text() {
 
 pick_clip() {
     # $1 = text, $2 = cells; sets PICK_CLIPPED to the longest prefix that
-    # fits and PICK_CELLS to its width. Each painted element must stay one physical row, because inline
+    # fits and PICK_WIDTH to its width. Each painted element must stay one physical row, because inline
     # repainting moves up by element count. Non-ASCII text is measured in
     # UTF-8 bytes: characters from U+2000 up (CJK, Hangul, kana, fullwidth
     # forms, emoji, and ambiguous-width symbols) count as two cells. Narrow
-    # ones among them are overcounted, which clips early but never wraps.
+    # ones among them are overcounted, which clips early but never wraps,
+    # except that arrows and technical symbols, which show keys, are exact.
     local text=$1 max=$2
-    if ((max <= 0)); then PICK_CLIPPED=; PICK_CELLS=0; return 0; fi
+    if ((max <= 0)); then PICK_CLIPPED=; PICK_WIDTH=0; return 0; fi
     if [[ $text != *[![:ascii:]]* ]]; then
         PICK_CLIPPED=${text:0:$max}
-        PICK_CELLS=${#PICK_CLIPPED}
+        PICK_WIDTH=${#PICK_CLIPPED}
         return 0
     fi
     local LC_ALL=C
     local n=${#text} i=0 w=0 b c len cw
     while ((i < n)); do
         b=${text:i:1}
-        if [[ $b < $'\x80' ]]; then len=1; cw=1
+        if [[ $b < $'\x80' ]]; then
+            # Plain text goes by the run.
+            c=${text:i}
+            c=${c%%[$'\x80'-$'\xff']*}
+            len=${#c}
+            ((len <= max - w)) || len=$((max - w))
+            cw=$len
+            ((len)) || break
         elif [[ $b < $'\xe0' ]]; then len=2; cw=1
         elif [[ $b < $'\xf0' ]]; then
             len=3; cw=2
@@ -194,6 +203,13 @@ pick_clip() {
                 # U+1000-U+1FFF is narrow except Hangul Jamo, U+1100-U+11FF.
                 c=${text:i+1:1}
                 [[ $c < $'\x84' || $c > $'\x87' ]] && cw=1
+            elif [[ $b == $'\xe2' ]]; then
+                # U+2180-U+21FF and U+2300-U+23BF, without the wide watch,
+                # hourglass, and angle brackets.
+                case ${text:i+1:2} in
+                    $'\x8c'[$'\x9a\x9b\xa9\xaa']) ;;
+                    $'\x86'?|$'\x87'?|$'\x8c'?|$'\x8e'?) cw=1 ;;
+                esac
             fi
         else len=4; cw=2; fi
         ((w + cw <= max)) || break
@@ -201,7 +217,7 @@ pick_clip() {
         i=$((i + len))
     done
     PICK_CLIPPED=${text:0:i}
-    PICK_CELLS=$w
+    PICK_WIDTH=$w
 }
 
 pick_wrap() {

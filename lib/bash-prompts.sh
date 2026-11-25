@@ -36,6 +36,19 @@
 #     Only PICK_OFF values can override it while it applies. With prerequisites
 #     on, a choice of this value falls back to the first value in PICK_VALUES.
 #   PICK_RESULT[i]  output: value in effect after prerequisites.
+#   PICK_EDIT[i]    function that Toggle runs with the row index, such as
+#     pick_keybinding. It reads and sets PICK_VALUE and returns 0 to change the
+#     row. PICK_VALUES are then fixed values beside the edited one, and
+#     PICK_CURRENT and PICK_CHOICE may be any text.
+#   PICK_FORMAT[i]  function that shows the value: sets PICK_TEXT from $1.
+#   PICK_CELLS[i]   tab-separated columns between the label and the value.
+#   PICK_COLUMNS    headers of the label, the cells, and the value.
+# Keys (pick_keybinding, and rows edited by it) additionally use:
+#   PICK_KEYBINDING_DEFAULT[i] key of a row at a fixed value that is not off.
+#   PICK_KEYBINDING_SCOPE[i] rows compete for a key within the same scope.
+#   PICK_KEYBINDING_CHECK function called with a key entered and the row index;
+#     a nonzero status refuses it. PICK_KEYBINDING_MESSAGE is its message.
+#   A key is [fn+][ctrl+][option+][shift+][cmd+]name, such as ctrl+tab.
 # Dependency API additionally uses:
 #   PICK_DEPS[i]    comma-separated IDs of earlier rows; tokens are trimmed.
 #   PICK_DIRECT[i]  explicit choices.
@@ -60,6 +73,8 @@
 # pick_choices: one value per row, with the same 0/1/2/3 statuses. While a
 #   prerequisite is off, a row can only stay at its current value or turn off;
 #   turning a prerequisite off uses PICK_WHILE_OFF if set, else turns the row off.
+#   A key that two rows share is refused on submission.
+# pick_keybinding: one key combination in PICK_VALUE, with the same statuses.
 # pick_run: dependency-aware selection, starting with nothing checked.
 #   Live closure, dependency-mode deselection, retained auto choices, and
 #   nonempty submission.
@@ -75,6 +90,9 @@
 #   selected rows whose PICK_DEPS name that row, in input order, in any mode.
 # pick_locked_by <index>: print labels of selected immediate dependents
 #   in lock mode; print nothing in cascade mode.
+# pick_keybinding_parse <text> / pick_keybinding_decode <code> <flags>: set
+#   PICK_KEYBINDING_VALUE, _KEY, _CODE, _FLAGS, and _CHAR; 1 sets _ERROR.
+# pick_keybinding_format <text>: sets PICK_TEXT to the symbols of a key.
 # pick_split_csv <text>: fills PICK_SPLIT, trimming tokens and preserving
 #   empty tokens, including a trailing one; empty input means no tokens.
 #
@@ -82,9 +100,10 @@
 #   PICK_KEYS_UP=(Up k)          PICK_KEYS_DOWN=(Down j)
 #   PICK_KEYS_PREV_GROUP=()      PICK_KEYS_NEXT_GROUP=()
 #   PICK_KEYS_PREV_TAB=(Left h)  PICK_KEYS_NEXT_TAB=(Right l)
-#   PICK_KEYS_TOGGLE=(Space)     PICK_KEYS_ALL=(a)
-#   PICK_KEYS_CLEAR=(n)          PICK_KEYS_SUBMIT=(Enter)
-#   PICK_KEYS_CANCEL=(q Q Esc)   PICK_KEYS_BACK=()
+#   PICK_KEYS_TOGGLE=(Space)     PICK_KEYS_NEXT_VALUE=(Backspace)
+#   PICK_KEYS_ALL=(a)            PICK_KEYS_CLEAR=(n)
+#   PICK_KEYS_SUBMIT=(Enter)     PICK_KEYS_CANCEL=(q Q Esc)
+#   PICK_KEYS_BACK=()
 # Elements are a single printable ASCII character or one of:
 #   Up Down Left Right Space Enter Esc Tab Shift+Tab Backspace.
 # Empty arrays disable an action. A key may belong to only one action.
@@ -96,13 +115,15 @@
 # configured aliases (default 1). Down from the last row wraps to the
 # first, and Up from the first wraps to the last; 0 retains bounded
 # movement.
-# Toggle moves a value row to its next value. All and Clear bindings apply
-# only to multiselect and dependencies; tab bindings only with PICK_TABS.
+# Toggle moves a value row to its next value or edits it; Next value applies
+# where a row has an edit function. All and Clear bindings apply only to
+# multiselect and dependencies; tab bindings only with PICK_TABS.
 # Back applies to every entry point but pick_run.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
-#   row, reversed active tab, yellow changed value and warning, dim notes,
-#   read-only rows, separators and key hint, red error. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
+#   row, reversed active tab, yellow changed value and warning, dim column
+#   headers, notes, read-only rows, separators and key hint, red error and
+#   shared key. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
 #   capability omits colors while supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end, also
 #   on the alternate screen.
@@ -137,6 +158,21 @@ PICK_CHOICE=()
 PICK_OFF=()
 PICK_WHILE_OFF=()
 PICK_RESULT=()
+PICK_EDIT=()
+PICK_FORMAT=()
+PICK_COLUMNS=()
+PICK_CELLS=()
+PICK_KEYBINDING_DEFAULT=()
+PICK_KEYBINDING_SCOPE=()
+PICK_KEYBINDING_CHECK=
+PICK_KEYBINDING_MESSAGE=
+PICK_KEYBINDING_ERROR=
+PICK_KEYBINDING_VALUE=
+PICK_KEYBINDING_KEY=
+PICK_KEYBINDING_CODE=
+PICK_KEYBINDING_FLAGS=
+PICK_KEYBINDING_CHAR=
+PICK_TEXT=
 PICK_SPLIT=()
 PICK_SELECTED_INDICES=()
 PICK_REQUIRED_BY_INDICES=()
@@ -146,6 +182,7 @@ PICK_CURSOR=0
 PICK_OFFSET=0
 PICK_MSG=
 PICK_MSG_STYLE=
+PICK_FIELD=
 PICK_GID=()
 PICK_GLABEL=()
 PICK_GPARENT=()
@@ -168,6 +205,28 @@ PICK_NEXT=
 PICK_LABEL_CELLS=0
 PICK_VALUE_CELLS=0
 PICK_VALUE_COLUMN=0
+PICK_CELL_COUNT=0
+PICK_CELL_CELLS=()
+PICK_CELL_COLUMNS=()
+PICK_SPLIT_CELLS=()
+PICK_FITTED=
+PICK_FITTED_CELLS=
+PICK_HEADED=0
+PICK_SHOWN=()
+PICK_STUCK=()
+PICK_EDITS=0
+PICK_EDIT_FIRST=0
+PICK_ALONE=0
+PICK_KEY_ROWS=()
+PICK_KEY=()
+PICK_HELD=()
+PICK_HELD_AS=()
+PICK_OWN=()
+PICK_CLASH=()
+PICK_CAPTURE=
+PICK_NO_WINDOW=0
+PICK_CAPTURE_PID=
+PICK_CAPTURE_DIR=
 PICK_SEP_ANCHOR=()
 PICK_FOCUS_ROW=()
 PICK_DKIND=()
@@ -190,7 +249,7 @@ PICK_SCREEN_HELD=
 PICK_SCREEN_TRAPS=
 PICK_SCREEN_EXIT=
 PICK_CLIPPED=
-PICK_CELLS=0
+PICK_WIDTH=0
 PICK_ELLIPSIS=
 PICK_WRAPPED=()
 PICK_NOTES=
@@ -237,6 +296,7 @@ PICK_KEYS_NEXT_GROUP=()
 PICK_KEYS_PREV_TAB=(Left h)
 PICK_KEYS_NEXT_TAB=(Right l)
 PICK_KEYS_TOGGLE=(Space)
+PICK_KEYS_NEXT_VALUE=(Backspace)
 PICK_KEYS_ALL=(a)
 PICK_KEYS_CLEAR=(n)
 PICK_KEYS_SUBMIT=(Enter)
@@ -246,6 +306,7 @@ PICK_BOUND_KEYS=()
 PICK_BOUND_ACTIONS=()
 PICK_KEY_HELP=()
 PICK_KEY_ACTION=
+PICK_PRESSED=
 
 # Development entry: load the feature modules in the caller shell.
 # The modules hold function definitions only, so dynamic-scope behavior
@@ -257,6 +318,8 @@ source "$_BASH_PROMPTS_DIR/bash-prompts/core.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/groups.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/selection.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/choices.sh" || return 1
+source "$_BASH_PROMPTS_DIR/bash-prompts/keybinding.sh" || return 1
+source "$_BASH_PROMPTS_DIR/bash-prompts/capture.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/terminal.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/screen.sh" || return 1
 source "$_BASH_PROMPTS_DIR/bash-prompts/keys.sh" || return 1

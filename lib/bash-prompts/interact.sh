@@ -15,7 +15,7 @@ pick_run() {
 }
 
 pick_interact() {
-    local key seq part rc=1 start i resized
+    local rc=1 i got
     pick_prepare_keys || return 2
     pick_prepare_text
     pick_build_focus || return 2
@@ -28,6 +28,8 @@ pick_interact() {
     fi
     PICK_OFFSET=0
     PICK_MSG=
+    PICK_FIELD=
+    PICK_NO_WINDOW=0
     PICK_GOT_SIGNAL=
     PICK_PREV_COUNT=0
     PICK_PREV_ROWS=
@@ -50,66 +52,16 @@ pick_interact() {
         # ends the session instead of blocking for keys on a dead screen.
         pick_render || { rc=1; break; }
         if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
-        # The read carries a one-second timeout as an interrupt backstop:
-        # a returning caller trap resumes inside read, so without it the
-        # cancel would wait for the next keypress. A failure ends the
-        # session unless it is a proven timeout with no pending interrupt;
-        # only elapsed time distinguishes the two on Bash 3.2, where both
-        # report the same status.
-        key=
-        resized=0
-        while true; do
-            start=$SECONDS
-            if IFS= read -rsn1 -t 1 key; then break; fi
-            if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break 2; fi
-            if (( SECONDS - start >= 1 )); then
-                # The timeout tick also picks up a resized terminal.
-                pick_term_size
-                [[ $PICK_TROWS == "$PICK_PREV_ROWS" && $PICK_TCOLS == "$PICK_PREV_COLS" ]] || { resized=1; break; }
-                continue
-            fi
-            rc=1; break 2
-        done
-        # A key that arrived after a returning handler fired must not be
-        # dispatched: the terminal is already restored, so cancel instead
-        # of acting on stale input.
-        if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
-        ((resized)) && continue
-        if [[ $key == $'\e' ]]; then
-            pick_read_escape
-            if [[ -n $seq ]]; then
-                case $seq in
-                    '['|'O')
-                        # Consume the whole terminal sequence, even if it
-                        # is unmapped, so its tail cannot trigger a plain key.
-                        while IFS= read -rsn1 -t 1 part; do
-                            [[ -z ${PICK_GOT_SIGNAL:-} ]] || break
-                            seq="$seq$part"
-                            [[ $part == [@-~] ]] && break
-                            [[ $part == [\ -?] ]] || break
-                        done
-                        ;;
-                esac
-            fi
-            if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
-            case $seq in
-                '') key=Esc ;;
-                '[A'|'OA') key=Up ;;
-                '[B'|'OB') key=Down ;;
-                '[C'|'OC') key=Right ;;
-                '[D'|'OD') key=Left ;;
-                '[Z') key=Shift+Tab ;;
-                *) key= ;;
-            esac
-        else
-            case $key in
-                ' ') key=Space ;;
-                ''|$'\n'|$'\r') key=Enter ;;
-                $'\t') key=Tab ;;
-                $'\177'|$'\b') key=Backspace ;;
-            esac
+        if ((PICK_EDIT_FIRST)); then
+            PICK_EDIT_FIRST=0
+            pick_change_value
+            continue
         fi
-        pick_key_action "$key"
+        got=0
+        pick_read_key || got=$?
+        ((got != 1)) || { rc=1; break; }
+        ((got != 2)) || continue
+        pick_key_action "$PICK_PRESSED"
         case $PICK_KEY_ACTION in
             up)
                 PICK_MSG=
@@ -125,7 +77,8 @@ pick_interact() {
             next_group) PICK_MSG=; pick_jump_group 1 ;;
             prev_tab) PICK_MSG=; pick_switch_tab -1 ;;
             next_tab) PICK_MSG=; pick_switch_tab 1 ;;
-            toggle) if [[ $PICK_MODE == choices ]]; then pick_next_value; else pick_action toggle; fi ;;
+            toggle) if [[ $PICK_MODE == choices ]]; then pick_change_value; else pick_action toggle; fi ;;
+            next_value) pick_next_value ;;
             all) pick_action all ;;
             clear) pick_action clear ;;
             cancel) rc=1; break ;;
@@ -133,6 +86,7 @@ pick_interact() {
             submit)
                 if [[ -n ${PICK_GOT_SIGNAL:-} ]]; then rc=1; break; fi
                 if [[ $PICK_MODE == dependencies && ${PICK_ALLOW_EMPTY:-0} == 0 && $(pick_sel_count) == 0 ]]; then pick_message "$PICK_STYLE_ERROR" "Check at least one item to submit."
+                elif [[ $PICK_MODE == choices ]] && pick_refuse_choices; then :
                 else rc=0; break; fi
                 ;;
         esac

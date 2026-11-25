@@ -6,10 +6,12 @@ Grouped interactive selection in Bash:
 - `pick_multiselect`: checked items, returned as flags in `PICK_STATE`.
 - `pick_dependencies`: initialized checkboxes with live dependency selection.
 - `pick_choices`: one value per row, returned in `PICK_RESULT`.
+- `pick_keybinding`: one key combination, returned in `PICK_VALUE`.
 - `pick_run`: dependency-aware checked items.
 
 All use the same terminal UI. Requires Bash 3.2+ and system `tput`, `stty`,
-`dd`, `mktemp`, `cat`, and `rm`.
+`dd`, `mktemp`, `cat`, and `rm`; key capture on macOS also uses `mkfifo` and
+`osascript`.
 
 The prompt is drawn inline at the cursor, below earlier output, and erased
 when it ends, leaving the cursor where it started; print the result or the
@@ -183,8 +185,8 @@ the library is sourced.
 ## Tabs
 
 `PICK_TABS=1` shows the root groups as tabs below the prompt, and the rows of
-the active one below them. It applies to every entry point; every included row needs
-a group. One submission covers all tabs. Tabs follow the display order of the
+the active one below them. It applies to every prompt with rows; every included row
+needs a group. One submission covers all tabs. Tabs follow the display order of the
 root groups and each keeps its focus while the prompt is open. `PICK_TAB` is the
 active tab's group ID, input and output; an ID without included rows starts at
 the first tab. Nested groups keep their headers inside a tab.
@@ -240,6 +242,90 @@ value first in `PICK_VALUES`: that is the fallback when the picked value is
 
 It uses the `0`/`1`/`2`/`3` return contract of `pick_multiselect`; on `3`,
 `PICK_CHOICE` and `PICK_RESULT` hold the unsubmitted state.
+
+### Edit rows, formats, and columns
+
+An edit row takes text from a function instead of moving through a list. It
+mixes with other rows and shares their tabs, prerequisites, and result.
+
+| Array | Contract |
+|---|---|
+| `PICK_EDIT` | Function Toggle runs for the row, as `function <row index>` in the calling shell. It finds the row's value in `PICK_VALUE`, sets `PICK_VALUE`, and returns `0` to change the row; another status leaves it. It must not print, read standard input, or start another prompt, because the prompt still owns the terminal. |
+| `PICK_VALUES` | For an edit row, the fixed values offered beside an edited one; may be empty. |
+| `PICK_FORMAT` | Function that shows the row's value, as `function <value>`; it sets `PICK_TEXT`. |
+| `PICK_CELLS` | Tab-separated text for the columns between the label and the value. |
+| `PICK_COLUMNS` | Headers of the label, each cell, and the value, in order. Omitted ones are blank. |
+
+`PICK_CURRENT` and `PICK_CHOICE` of an edit row may be any text. Next value moves
+it through its fixed values and back to the text it started from, which for a key
+row must be a key. An edit row cannot be edited while a prerequisite is off.
+
+The headers appear where a shown row has cells or an edit function. On a narrow
+terminal labels are shortened first, then the cells give way from the last one.
+
+## Keybindings
+
+```bash
+source ./bash-prompts.sh
+PICK_PROMPT='Which key opens the terminal?'
+if pick_keybinding; then
+    pick_keybinding_parse "$PICK_VALUE"
+    printf '%s: key code %s, flags %s\n' "$PICK_VALUE" "$PICK_KEYBINDING_CODE" "$PICK_KEYBINDING_FLAGS"
+fi
+```
+
+`PICK_VALUE` holds the key, input and output; an input that is not a key means
+none yet, and entry starts at once. Toggle enters another key. It returns `0` on
+submission, `1` on cancellation, `2` for invalid input or no interactive
+terminal, and `3` on Back.
+
+On macOS a key is pressed in a small window. The window receives what a terminal
+cannot, including Globe and Command combinations and the hotkeys macOS itself
+uses, which stay off while it has the focus. It accepts the first key that can be
+used and closes when that key is released. Esc, its close button, and losing the
+focus leave the value as it was; Delete takes the row's off value. Tab, or its
+button, goes to typing the key as text. Typing also serves keys no window
+receives, other systems, SSH, and a Mac without a window to open.
+
+A key is written `[fn+][ctrl+][option+][shift+][cmd+]name`, with the modifiers in
+that order, such as `ctrl+tab`, `cmd+comma`, or `fn+h`. The names are positions on
+an ANSI keyboard, so a key does not depend on the input source: `a`-`z`, `0`-`9`,
+`minus`, `equal`, `leftbracket`, `rightbracket`, `backslash`, `semicolon`, `quote`,
+`grave`, `comma`, `period`, `slash`, `return`, `tab`, `space`, `delete`,
+`forwarddelete`, `esc`, `left`, `right`, `up`, `down`, `home`, `end`, `pageup`,
+`pagedown`, `help`, `f1`-`f20`, `keypad0`-`keypad9`, `keypaddecimal`, `keypadmultiply`,
+`keypadplus`, `keypadclear`, `keypaddivide`, `keypadenter`, `keypadminus`,
+`keypadequal`, `keypadcomma`, `section`, `yen`, `underscore`, `eisu`, and `kana`. `fn` is the
+Globe key. It is shown with the symbols of macOS, `🌐⌃⌥⇧⌘` and the key.
+
+A key needs Control, Option, Command, or Globe so that it does not type a
+character; `f1`-`f20` stand alone. Globe does not count for keys macOS marks with
+it anyway, such as the arrows. macOS turns Globe with an arrow, Delete, or Return
+into Home, End, Page Up, Page Down, Forward Delete, or keypad Enter, and those are
+the keys entered.
+
+### Keys in value rows
+
+`PICK_EDIT[i]=pick_keybinding` makes a row of `pick_choices` hold a key. Its
+`PICK_VALUES` decide whether it can also be off or at its default: the ones in
+`PICK_OFF` hold no key, and the others stand for the default.
+
+| Variable | Contract |
+|---|---|
+| `PICK_KEYBINDING_DEFAULT` | Key of a row while it stands at its default. |
+| `PICK_KEYBINDING_SCOPE` | Rows share a key only with rows of the same text; unset is one common scope. |
+| `PICK_KEYBINDING_CHECK` | Function called with each key entered and the row index, which is left out on its own. |
+| `PICK_KEYBINDING_MESSAGE` | Set by the check: the reason of a refusal or a warning. |
+
+The check runs in the calling shell, where it can read the other rows. It returns
+`0` to accept the key and another status to refuse it; entry then continues with
+the message. A message with `0` stays below the list until the next action. It
+must not print or read standard input. Without a check any key is accepted.
+
+A key row, and any row with a `PICK_KEYBINDING_DEFAULT`, competes for its key. A
+key held by two rows is marked at once and refused on Submit, so two rows can swap
+keys. Rows that all stand at their default may share one. `PICK_FORMAT[i]=pick_keybinding_format`
+shows a key in a row that is neither edited nor compared, such as a confirmation.
 
 ## Alternate screen
 
@@ -309,7 +395,8 @@ Each part of a prompt has one look, following the text roles of
 | Focused row | Bold |
 | Active tab | Reverse video |
 | Changed value | Yellow |
-| Note, read-only row, separator, key hint | Dim |
+| Key that two rows share | Red |
+| Column header, note, read-only row, separator, key hint | Dim |
 | Message that other rows changed too | Yellow |
 | Message that refuses an action | Red |
 
@@ -320,8 +407,8 @@ produces plain text; without color capability only bold and dim apply.
 
 All interactive APIs read their active bindings at the start of each call.
 Single selection uses Up, Down, Submit, Back, and Cancel; multi-selection
-also uses Toggle, All, and Clear, and value rows use Toggle. Prev/next group
-jumps are available in every interactive API when bound, and prev/next tab with
+also uses Toggle, All, and Clear, and value rows use Toggle, with Next value
+where a row has an edit function. Prev/next group jumps are available in every interactive API when bound, and prev/next tab with
 `PICK_TABS=1`. `pick_dependencies` supports Back; the
 compatibility entry point `pick_run` leaves it unbound.
 Defaults are initialized when the library is sourced:
@@ -334,6 +421,7 @@ PICK_KEYS_NEXT_GROUP=()
 PICK_KEYS_PREV_TAB=(Left h)
 PICK_KEYS_NEXT_TAB=(Right l)
 PICK_KEYS_TOGGLE=(Space)
+PICK_KEYS_NEXT_VALUE=(Backspace)
 PICK_KEYS_ALL=(a)
 PICK_KEYS_CLEAR=(n)
 PICK_KEYS_SUBMIT=(Enter)
@@ -382,8 +470,10 @@ The hint below the list shows the active bindings, and a message appears above i
 and returns `3` on Back with the current flags. Read-only checkbox states are
 preserved by Toggle, All, Clear, and dependent deselection.
 
-`pick_choices` moves the focused row to its next allowed value on Toggle,
-submits any values, and returns `3` on Back. Prev/next tab keys wrap around.
+`pick_choices` moves the focused row to its next allowed value on Toggle, or
+edits it, submits any values but a shared key, and returns `3` on Back. Prev/next
+tab keys wrap around. `pick_keybinding` uses Toggle, Submit, Back, and Cancel;
+while a key is typed, Enter takes it, Esc leaves it, and letters are text.
 
 A lone Esc takes effect after 0.1 seconds, which distinguishes it from an
 escape sequence.
@@ -408,6 +498,18 @@ ambiguous-width characters as wide can still wrap those rows.
   in either dependency mode. It reads the current arrays.
 - `pick_locked_by <index>` prints labels of selected immediate dependents in
   lock mode, or nothing in cascade mode.
+- `pick_keybinding_parse <text>` reads a key in any modifier order and case, with
+  common aliases such as `command+enter`. It sets `PICK_KEYBINDING_VALUE` to the
+  key as written above, `PICK_KEYBINDING_KEY` to its name, `PICK_KEYBINDING_CODE` to its
+  virtual key code, `PICK_KEYBINDING_FLAGS` to its modifier flags, with the Globe flag
+  for keys macOS always marks with it, and `PICK_KEYBINDING_CHAR` to the code of the
+  character the key types unshifted, or `65535`. It returns `1` for other text, with
+  the reason in `PICK_KEYBINDING_ERROR`.
+- `pick_keybinding_decode <code> <flags>` sets the same variables from a virtual key
+  code and modifier flags, leaving Globe out for keys macOS always marks with it.
+  It returns `1` for a code without a name.
+- `pick_keybinding_format <text>` sets `PICK_TEXT` to the symbols of a key, or of
+  modifiers alone; other text stays as it is.
 - `pick_split_csv <text>` fills `PICK_SPLIT` with trimmed fields, retaining
   leading, middle and trailing empty fields. Empty input yields no fields.
 - `PICK_VERSION` identifies the API version. Other `pick_*` functions and
@@ -429,6 +531,7 @@ Use a name to run an example directly and return its exit status:
 ./demo dependencies
 ./demo lock
 ./demo choices
+./demo keybinding
 ./demo keys
 ./demo nested
 ./demo separators
@@ -444,7 +547,8 @@ repeated labels with distinct IDs, and notes. `dependencies` shows
 transitive automatic selection and cascading deselection, then prints each
 selected ID as direct or auto with the selected IDs that require it; `lock`
 shows the alternative locking behavior. `choices` shows value rows in tabs,
-with rows that turn off with what they require. `nested` demonstrates four levels,
+with rows that turn off with what they require; `keybinding` shows a key per row
+in columns, with a check, and a key on its own. `nested` demonstrates four levels,
 parent counts, tail ordering, separators inside and between groups, and
 Left/Right group jumps at depth 2; `separators` demonstrates dividers in a
 single-select list without groups.

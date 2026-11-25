@@ -1,4 +1,4 @@
-# bash-prompts: value rows, the values their prerequisites leave, and changes.
+# bash-prompts: value rows, the values their prerequisites leave, changes, and columns.
 # Function definitions only; sourced in the caller shell by lib/bash-prompts.sh.
 
 pick_csv_has() {
@@ -17,18 +17,34 @@ pick_prepare_choices() {
     # row indices once, because every change settles all rows again.
     local i j k value
     PICK_DEP_ROWS=()
+    PICK_EDITS=0
+    PICK_KEY_ROWS=()
+    PICK_HELD_AS=()
+    PICK_CLASH=()
+    PICK_CELL_COUNT=0
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         PICK_DEP_ROWS[i]=
         [[ ${PICK_VALID[i]:-1} != 0 ]] || continue
         pick_split_csv "${PICK_VALUES[i]-}"
         [[ -n ${PICK_CURRENT[i]+set} ]] || PICK_CURRENT[i]=${PICK_SPLIT[0]-}
         [[ -n ${PICK_CHOICE[i]+set} ]] || PICK_CHOICE[i]=${PICK_CURRENT[i]}
-        for value in "${PICK_CURRENT[i]}" "${PICK_CHOICE[i]}"; do
-            if ! pick_csv_has "$value" "${PICK_VALUES[i]}"; then
-                pick_err "'${PICK_LABEL[i]}' has no value '$value'"
-                return 1
-            fi
-        done
+        if [[ -n ${PICK_EDIT[i]-} ]]; then
+            PICK_EDITS=1
+        else
+            for value in "${PICK_CURRENT[i]}" "${PICK_CHOICE[i]}"; do
+                if ! pick_csv_has "$value" "${PICK_VALUES[i]}"; then
+                    pick_err "'${PICK_LABEL[i]}' has no value '$value'"
+                    return 1
+                fi
+            done
+        fi
+        if [[ ${PICK_EDIT[i]-} == pick_keybinding || -n ${PICK_KEYBINDING_DEFAULT[i]-} ]]; then
+            PICK_KEY_ROWS[${#PICK_KEY_ROWS[@]}]=$i
+        fi
+        if [[ -n ${PICK_CELLS[i]-} ]]; then
+            pick_split_cells "${PICK_CELLS[i]}"
+            ((${#PICK_SPLIT_CELLS[@]} <= PICK_CELL_COUNT)) || PICK_CELL_COUNT=${#PICK_SPLIT_CELLS[@]}
+        fi
         pick_split_csv "${PICK_DEPS[i]-}"
         for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
             j=$(pick_find_id "${PICK_SPLIT[k]}")
@@ -51,6 +67,8 @@ pick_settle() {
     # prerequisites, so one pass is enough. PICK_CHOICE keeps what was
     # picked, so a row returns to it when its prerequisites do.
     local i j value current off parked IFS=' '
+    PICK_SHOWN=()
+    PICK_STUCK=()
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         PICK_RESULT[i]=; PICK_ON[i]=1; PICK_MISSING[i]=; PICK_WITHDRAWN[i]=0
         [[ ${PICK_VALID[i]:-1} != 0 ]] || continue
@@ -85,6 +103,7 @@ pick_settle() {
         PICK_RESULT[i]=$value
         ! pick_csv_has "$value" "$off" || PICK_ON[i]=0
     done
+    if ((${#PICK_KEY_ROWS[@]})); then pick_find_clashes; fi
 }
 
 pick_while_off() {
@@ -107,15 +126,20 @@ pick_value_allowed() {
 
 pick_next_allowed() {
     # $1 = row; sets PICK_NEXT to the value after the one in effect, or to
-    # nothing when the row has no other value to take.
+    # nothing when the row has no other value to take. An edit row also goes
+    # back to the text it started from.
     local idx=$1 k n at=0
     PICK_NEXT=
-    pick_split_csv "${PICK_VALUES[idx]}"
+    pick_split_csv "${PICK_VALUES[idx]-}"
+    if [[ -n ${PICK_EDIT[idx]-} ]]; then
+        at=-1
+        if pick_can_return "$idx"; then PICK_SPLIT[${#PICK_SPLIT[@]}]=${PICK_CURRENT[idx]}; fi
+    fi
     n=${#PICK_SPLIT[@]}
     for ((k=0; k<n; k++)); do
         [[ ${PICK_SPLIT[k]} != "${PICK_RESULT[idx]}" ]] || at=$k
     done
-    for ((k=1; k<n; k++)); do
+    for ((k=1; k<n + (at < 0); k++)); do
         pick_value_allowed "$idx" "${PICK_SPLIT[(at + k) % n]}" || continue
         PICK_NEXT=${PICK_SPLIT[(at + k) % n]}
         return 0
@@ -123,12 +147,26 @@ pick_next_allowed() {
     return 1
 }
 
+pick_can_return() {
+    # $1 = edit row. Whether the value it started from can be taken again
+    # without entering it: not when that is a fixed value already, and for a
+    # key row only when it is a key.
+    ! pick_csv_has "${PICK_CURRENT[$1]}" "${PICK_VALUES[$1]-}" || return 1
+    [[ -n ${PICK_CURRENT[$1]} ]] || return 1
+    [[ ${PICK_EDIT[$1]} != pick_keybinding ]] || pick_keybinding_parse "${PICK_CURRENT[$1]}"
+}
+
 pick_missing_names() {
-    # $1 = row; sets PICK_DEPNAMES to the prerequisites that are off, with
-    # the tab of those shown elsewhere.
+    # $1 = row; sets PICK_DEPNAMES to the prerequisites that are off.
+    pick_row_names "$1" "${PICK_MISSING[$1]-}"
+}
+
+pick_row_names() {
+    # $1 = row, $2 = other rows; sets PICK_DEPNAMES to the labels of the
+    # others, with the tab of those shown elsewhere.
     local j tab IFS=' '
     PICK_DEPNAMES=
-    for j in ${PICK_MISSING[$1]-}; do
+    for j in $2; do
         PICK_DEPNAMES="${PICK_DEPNAMES:+$PICK_DEPNAMES, }${PICK_LABEL[j]}"
         ((${#PICK_TAB_GROUPS[@]})) || continue
         pick_ref_group "$j" 1
@@ -138,9 +176,14 @@ pick_missing_names() {
     done
 }
 
+pick_change_value() {
+    local idx=${PICK_FOCUS[PICK_CURSOR]}
+    if [[ -n ${PICK_EDIT[idx]-} ]]; then pick_edit_value "$idx"
+    else pick_next_value; fi
+}
+
 pick_next_value() {
-    local idx=${PICK_FOCUS[PICK_CURSOR]} i also=
-    local -a before=("${PICK_RESULT[@]}")
+    local idx=${PICK_FOCUS[PICK_CURSOR]}
     PICK_MSG=
     if [[ -n ${PICK_DISABLED[idx]:-} ]]; then pick_message "$PICK_STYLE_ERROR" "${PICK_DISABLED[idx]}"; return 0; fi
     if ! pick_next_allowed "$idx"; then
@@ -148,53 +191,207 @@ pick_next_value() {
         [[ -z $PICK_DEPNAMES ]] || pick_message "$PICK_STYLE_ERROR" "${PICK_LABEL[idx]} requires $PICK_DEPNAMES."
         return 0
     fi
-    PICK_CHOICE[idx]=$PICK_NEXT
+    pick_take_value "$idx" "$PICK_NEXT"
+}
+
+pick_edit_value() {
+    # $1 = row; runs its edit function, which reads and sets PICK_VALUE.
+    local idx=$1 PICK_VALUE
+    PICK_MSG=
+    if [[ -n ${PICK_DISABLED[idx]:-} ]]; then pick_message "$PICK_STYLE_ERROR" "${PICK_DISABLED[idx]}"; return 0; fi
+    if [[ -n ${PICK_MISSING[idx]} ]]; then
+        pick_missing_names "$idx"
+        pick_message "$PICK_STYLE_ERROR" "${PICK_LABEL[idx]} requires $PICK_DEPNAMES."
+        return 0
+    fi
+    PICK_VALUE=${PICK_RESULT[idx]}
+    "${PICK_EDIT[idx]}" "$idx" || return 0
+    pick_take_value "$idx" "$PICK_VALUE"
+}
+
+pick_take_value() {
+    # $1 = row, $2 = picked value; says what else it changed and whether the
+    # key is taken, after any warning already shown.
+    local idx=$1 i also= notes=
+    local -a before=("${PICK_RESULT[@]}")
+    PICK_CHOICE[idx]=$2
     pick_settle
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         [[ $i != "$idx" && ${PICK_RESULT[i]} != "${before[i]}" ]] || continue
         also="${also:+$also, }${PICK_LABEL[i]}"
     done
-    [[ -z $also ]] || pick_message "$PICK_STYLE_WARNING" "Also changed $also."
+    [[ -z $also ]] || notes="Also changed $also."
+    if [[ -n ${PICK_CLASH[idx]-} ]]; then
+        pick_row_names "$idx" "${PICK_CLASH[idx]}"
+        notes="${notes:+$notes }Same key as $PICK_DEPNAMES."
+    fi
+    [[ -z $notes ]] || pick_message "$PICK_STYLE_WARNING" "${PICK_MSG:+$PICK_MSG }$notes"
 }
 
-pick_measure_values() {
-    # Widths of the shown rows' labels and values, so the value column stays
-    # put while values change.
-    local i k g width
-    PICK_LABEL_CELLS=0
-    PICK_VALUE_CELLS=0
-    for i in "${PICK_FOCUS[@]}"; do
-        g=${PICK_IGROUP[i]}
-        pick_clip "${PICK_LABEL[i]}" 9999
-        width=$((PICK_CELLS + 2 + 2 * (PICK_GLEVEL[g] - PICK_GLEVEL[PICK_ROOT])))
-        ((width <= PICK_LABEL_CELLS)) || PICK_LABEL_CELLS=$width
-        pick_split_csv "${PICK_VALUES[i]}"
-        for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
-            pick_clip "${PICK_SPLIT[k]}" 9999
-            ((PICK_CELLS <= PICK_VALUE_CELLS)) || PICK_VALUE_CELLS=$PICK_CELLS
-        done
+pick_refuse_choices() {
+    # Whether something keeps the values from being submitted.
+    if ((PICK_ALONE)) && [[ -z ${PICK_RESULT[0]} ]]; then
+        pick_message "$PICK_STYLE_ERROR" 'No key is entered yet.'
+        return 0
+    fi
+    pick_refuse_clash
+}
+
+pick_format_value() {
+    # $1 = row, $2 = value; sets PICK_TEXT to how the row shows it.
+    local format=${PICK_FORMAT[$1]-}
+    [[ -n $format || ${PICK_EDIT[$1]-} != pick_keybinding ]] || format=pick_keybinding_format
+    PICK_TEXT=$2
+    if [[ -z $2 && -n ${PICK_EDIT[$1]-} ]]; then PICK_TEXT=none
+    elif [[ -n $format ]]; then "$format" "$2"; fi
+}
+
+pick_split_cells() {
+    # $1 = tab-separated cells; fills PICK_SPLIT_CELLS.
+    local rest=$1
+    PICK_SPLIT_CELLS=()
+    [[ -n $rest ]] || return 0
+    while true; do
+        PICK_SPLIT_CELLS[${#PICK_SPLIT_CELLS[@]}]=${rest%%$'\t'*}
+        [[ $rest == *$'\t'* ]] || break
+        rest=${rest#*$'\t'}
     done
 }
 
+pick_measure_values() {
+    # Widths of the shown rows' labels, cells, and values, so the columns
+    # stay put while values change.
+    local i k g width
+    PICK_LABEL_CELLS=0
+    PICK_VALUE_CELLS=0
+    PICK_CELL_CELLS=()
+    PICK_HEADED=0
+    for i in "${PICK_FOCUS[@]}"; do
+        g=${PICK_IGROUP[i]}
+        pick_clip "${PICK_LABEL[i]}" 9999
+        width=$((PICK_WIDTH + 2 + 2 * (PICK_GLEVEL[g] - PICK_GLEVEL[PICK_ROOT])))
+        ((width <= PICK_LABEL_CELLS)) || PICK_LABEL_CELLS=$width
+        if [[ -n ${PICK_CELLS[i]-} ]]; then
+            PICK_HEADED=1
+            pick_split_cells "${PICK_CELLS[i]}"
+            for ((k=0; k<${#PICK_SPLIT_CELLS[@]}; k++)); do
+                pick_clip "${PICK_SPLIT_CELLS[k]}" 9999
+                ((PICK_WIDTH <= ${PICK_CELL_CELLS[k]:-0})) || PICK_CELL_CELLS[k]=$PICK_WIDTH
+            done
+        fi
+        pick_split_csv "${PICK_VALUES[i]-}"
+        if [[ -n ${PICK_EDIT[i]-} ]]; then
+            PICK_HEADED=1
+            # The widest key is five modifiers with Space.
+            if [[ ${PICK_EDIT[i]} != pick_keybinding ]]; then PICK_SPLIT[${#PICK_SPLIT[@]}]=${PICK_RESULT[i]}
+            elif ((PICK_VALUE_CELLS < 11)); then PICK_VALUE_CELLS=11; fi
+        fi
+        for ((k=0; k<${#PICK_SPLIT[@]}; k++)); do
+            PICK_TEXT=${PICK_SPLIT[k]}
+            [[ -z ${PICK_FORMAT[i]-} ]] || pick_format_value "$i" "$PICK_TEXT"
+            pick_clip "$PICK_TEXT" 9999
+            ((PICK_WIDTH <= PICK_VALUE_CELLS)) || PICK_VALUE_CELLS=$PICK_WIDTH
+        done
+    done
+    if ((${#PICK_COLUMNS[@]} == 0)); then PICK_HEADED=0; fi
+    ((PICK_HEADED)) || return 0
+    pick_clip "${PICK_COLUMNS[0]-}" 9999
+    ((PICK_WIDTH + 2 <= PICK_LABEL_CELLS)) || PICK_LABEL_CELLS=$((PICK_WIDTH + 2))
+    for k in "${!PICK_CELL_CELLS[@]}"; do
+        pick_clip "${PICK_COLUMNS[k + 1]-}" 9999
+        ((PICK_WIDTH <= PICK_CELL_CELLS[k])) || PICK_CELL_CELLS[k]=$PICK_WIDTH
+    done
+    pick_clip "${PICK_COLUMNS[PICK_CELL_COUNT + 1]-}" 9999
+    ((PICK_WIDTH <= PICK_VALUE_CELLS)) || PICK_VALUE_CELLS=$PICK_WIDTH
+}
+
 pick_value_column() {
-    # $1 = width; sets PICK_VALUE_COLUMN. Long labels are shortened so the
-    # widest value fits, but never below a third of the width.
-    local cols=$1
+    # $1 = width; sets PICK_VALUE_COLUMN and PICK_CELL_COLUMNS. Long labels
+    # are shortened so the cells and the widest value fit, but never below a
+    # third of the width; then cells give way, from the last one.
+    local cols=$1 k width rest=$((PICK_VALUE_CELLS + 2)) over
+    PICK_CELL_COLUMNS=()
+    for k in "${!PICK_CELL_CELLS[@]}"; do
+        PICK_CELL_COLUMNS[k]=${PICK_CELL_CELLS[k]}
+        ((PICK_CELL_CELLS[k] == 0)) || rest=$((rest + PICK_CELL_CELLS[k] + 2))
+    done
     PICK_VALUE_COLUMN=$PICK_LABEL_CELLS
-    ((PICK_VALUE_COLUMN + 2 + PICK_VALUE_CELLS <= cols)) || PICK_VALUE_COLUMN=$((cols - 2 - PICK_VALUE_CELLS))
+    ((PICK_VALUE_COLUMN + rest <= cols)) || PICK_VALUE_COLUMN=$((cols - rest))
     ((PICK_VALUE_COLUMN >= cols / 3)) || PICK_VALUE_COLUMN=$((cols / 3))
     ((PICK_VALUE_COLUMN <= PICK_LABEL_CELLS)) || PICK_VALUE_COLUMN=$PICK_LABEL_CELLS
+    over=$((PICK_VALUE_COLUMN + rest - cols))
+    for ((k=${#PICK_CELL_COLUMNS[@]}-1; k>=0 && over>0; k--)); do
+        width=${PICK_CELL_COLUMNS[k]}
+        ((width)) || continue
+        if ((width - over >= 4)); then
+            PICK_CELL_COLUMNS[k]=$((width - over))
+            over=0
+        else
+            PICK_CELL_COLUMNS[k]=0
+            over=$((over - width - 2))
+        fi
+    done
+    # The label takes back what a dropped cell left over.
+    if ((over < 0)); then
+        PICK_VALUE_COLUMN=$((PICK_VALUE_COLUMN - over))
+        ((PICK_VALUE_COLUMN <= PICK_LABEL_CELLS)) || PICK_VALUE_COLUMN=$PICK_LABEL_CELLS
+    fi
+}
+
+pick_fit() {
+    # $1 = text, $2 = cells; sets PICK_FITTED to the text, shortened if it is
+    # too wide, with two spaces after the column.
+    local text=$1 cells pad
+    pick_clip "$text" "$2"
+    cells=$PICK_WIDTH
+    if [[ $PICK_CLIPPED != "$text" ]]; then
+        pick_clip "$text" "$(($2 - ${#PICK_ELLIPSIS}))"
+        text=$PICK_CLIPPED$PICK_ELLIPSIS
+        cells=$((PICK_WIDTH + ${#PICK_ELLIPSIS}))
+    fi
+    printf -v pad '%*s' "$(($2 - cells + 2))" ''
+    PICK_FITTED=$text$pad
+}
+
+pick_fit_cells() {
+    # Sets PICK_FITTED_CELLS to the cells in PICK_SPLIT_CELLS, each in its
+    # column.
+    local k
+    PICK_FITTED_CELLS=
+    for k in "${!PICK_CELL_COLUMNS[@]}"; do
+        ((PICK_CELL_COLUMNS[k])) || continue
+        pick_fit "${PICK_SPLIT_CELLS[k]-}" "${PICK_CELL_COLUMNS[k]}"
+        PICK_FITTED_CELLS+=$PICK_FITTED
+    done
+}
+
+pick_column_line() {
+    # Sets PICK_ROW to the column headers.
+    pick_fit "${PICK_COLUMNS[0]-}" "$((PICK_VALUE_COLUMN - 2))"
+    PICK_ROW="  $PICK_FITTED"
+    PICK_SPLIT_CELLS=("${PICK_COLUMNS[@]:1:PICK_CELL_COUNT}")
+    pick_fit_cells
+    PICK_ROW+=$PICK_FITTED_CELLS${PICK_COLUMNS[PICK_CELL_COUNT + 1]-}
 }
 
 pick_value_line() {
     # $1 = row, $2 = focus position, $3 = indent. Also sets PICK_NOTES.
-    local idx=$1 label=${PICK_LABEL[$1]} notes=${PICK_NOTE[$1]-}
-    local result=${PICK_RESULT[$1]} role=PLAIN lead="$3  " cells pad
-    pick_missing_names "$idx"
-    [[ -z $PICK_DEPNAMES ]] || notes="${notes:+$notes; }requires $PICK_DEPNAMES"
+    local idx=$1 notes=${PICK_NOTE[$1]-} role=PLAIN lead="$3  "
+    # Neither changes until a value does.
+    if [[ -z ${PICK_SHOWN[idx]+set} ]]; then
+        pick_format_value "$idx" "${PICK_RESULT[idx]}"
+        PICK_SHOWN[idx]=$PICK_TEXT
+        PICK_STUCK[idx]=0
+        if [[ -n ${PICK_DISABLED[idx]:-} ]]; then PICK_STUCK[idx]=1
+        elif [[ -z ${PICK_EDIT[idx]-} || -n ${PICK_MISSING[idx]} ]] && ! pick_next_allowed "$idx"; then PICK_STUCK[idx]=1; fi
+    fi
+    if [[ -n ${PICK_MISSING[idx]} ]]; then
+        pick_missing_names "$idx"
+        notes="${notes:+$notes; }requires $PICK_DEPNAMES"
+    fi
     [[ -z ${PICK_DISABLED[idx]:-} ]] || notes="${notes:+$notes; }${PICK_DISABLED[idx]}"
     PICK_ROW_STYLE=
-    if [[ -n ${PICK_DISABLED[idx]:-} ]] || ! pick_next_allowed "$idx"; then
+    if ((PICK_STUCK[idx])); then
         PICK_ROW_STYLE=$PICK_STYLE_MUTED
         role=MUTED
     fi
@@ -202,18 +399,21 @@ pick_value_line() {
         lead="$3> "
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
     fi
-    pick_clip "$label" "$((PICK_VALUE_COLUMN - ${#lead}))"
-    cells=$PICK_CELLS
-    if [[ $PICK_CLIPPED != "$label" ]]; then
-        pick_clip "$label" "$((PICK_VALUE_COLUMN - ${#lead} - ${#PICK_ELLIPSIS}))"
-        label=$PICK_CLIPPED$PICK_ELLIPSIS
-        cells=$((PICK_CELLS + ${#PICK_ELLIPSIS}))
+    [[ ${PICK_RESULT[idx]} == "${PICK_CURRENT[idx]}" ]] || role=CHANGED
+    if [[ -n ${PICK_CLASH[idx]-} ]]; then
+        role=ERROR
+        pick_row_names "$idx" "${PICK_CLASH[idx]}"
+        notes="same key as $PICK_DEPNAMES${notes:+; $notes}"
     fi
-    printf -v pad '%*s' "$((PICK_VALUE_COLUMN - ${#lead} - cells + 2))" ''
-    PICK_ROW=$lead$label$pad
-    [[ $result == "${PICK_CURRENT[idx]}" ]] || role=CHANGED
+    pick_fit "${PICK_LABEL[idx]}" "$((PICK_VALUE_COLUMN - ${#lead}))"
+    PICK_ROW=$lead$PICK_FITTED
+    if ((${#PICK_CELL_COLUMNS[@]})); then
+        pick_split_cells "${PICK_CELLS[idx]-}"
+        pick_fit_cells
+        PICK_ROW+=$PICK_FITTED_CELLS
+    fi
     PICK_ROW_SPANS="${#PICK_ROW} $role"
-    PICK_ROW=$PICK_ROW$result
+    PICK_ROW=$PICK_ROW${PICK_SHOWN[idx]}
     PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW} MUTED"
     PICK_ROW="$PICK_ROW${notes:+  $notes}"
     PICK_NOTES=$notes

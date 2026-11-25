@@ -213,7 +213,7 @@ pick_build_tabs() {
 }
 
 pick_switch_tab() {
-    # $1 = -1 for the previous tab, 1 for the next; each tab keeps its focus.
+    # $1 = tabs to move by, -1 for the previous one; each keeps its focus.
     local n=${#PICK_TAB_GROUPS[@]}
     PICK_TAB_CURSOR[PICK_TAB_AT]=$PICK_CURSOR
     PICK_TAB_OFFSET[PICK_TAB_AT]=$PICK_OFFSET
@@ -223,6 +223,22 @@ pick_switch_tab() {
     pick_build_rows
     PICK_CURSOR=${PICK_TAB_CURSOR[PICK_TAB_AT]:-0}
     PICK_OFFSET=${PICK_TAB_OFFSET[PICK_TAB_AT]:-0}
+}
+
+pick_focus_row() {
+    # $1 = item index; focuses it, in its tab.
+    local idx=$1 k
+    if ((${#PICK_TAB_GROUPS[@]})); then
+        pick_ref_group "$idx" 1
+        for ((k=0; k<${#PICK_TAB_GROUPS[@]}; k++)); do
+            [[ ${PICK_TAB_GROUPS[k]} == "$PICK_REFGROUP" && $k != "$PICK_TAB_AT" ]] || continue
+            pick_switch_tab "$((k - PICK_TAB_AT))"
+            break
+        done
+    fi
+    for ((k=0; k<${#PICK_FOCUS[@]}; k++)); do
+        [[ ${PICK_FOCUS[k]} != "$idx" ]] || PICK_CURSOR=$k
+    done
 }
 
 pick_build_rows() {

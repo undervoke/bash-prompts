@@ -32,7 +32,7 @@ pick_render() {
     # A pending interrupt means the terminal is already restored; build
     # nothing so no further frame is composed for a dead screen.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
-    local rows cols h d total drow start end title counter avail show_tabs show_title tab_spacer msg_rows msg_style msg_spacer hint_rows spacer pinned g
+    local rows cols h d total drow start end title counter avail show_tabs show_title show_columns tab_spacer msg_rows msg_style msg_spacer hint_rows spacer pinned g
     pick_term_size
     rows=$PICK_TROWS
     cols=$PICK_TCOLS
@@ -42,20 +42,21 @@ pick_render() {
     PICK_WRAPPED=()
     msg_style=$PICK_MSG_STYLE
     if [[ -n $PICK_MSG ]]; then pick_wrap "$PICK_MSG" "$((cols - 1))"
-    elif [[ $PICK_MODE == choices ]]; then
+    elif [[ $PICK_MODE == choices && -z $PICK_FIELD ]]; then
         # The focused row's note, when the row has no room for all of it.
         msg_style=$PICK_STYLE_MUTED
         pick_item_line "${PICK_FOCUS[PICK_CURSOR]}" "$PICK_CURSOR"
         pick_clip "$PICK_ROW" "$((cols - 1))"
         [[ $PICK_CLIPPED == "$PICK_ROW" ]] || pick_wrap "$PICK_NOTES" "$((cols - 1))"
     fi
+    [[ -z $PICK_FIELD ]] || PICK_WRAPPED=("$PICK_FIELD" "${PICK_WRAPPED[@]}")
     # The frame never exceeds the terminal height, or relative repainting
     # would lose rows that scrolled off. The list keeps at least one row;
-    # the tabs, title, message, hint lines, and spacers take what remains in
-    # that order, and the list gets the rest, up to its length.
+    # the tabs, title, message, hint lines, column headers, and spacers take
+    # what remains in that order, and the list gets the rest, up to its length.
     total=${#PICK_DKIND[@]}
     avail=$((rows - 1))
-    show_tabs=0; show_title=0; tab_spacer=0; spacer=0; msg_spacer=0
+    show_tabs=0; show_title=0; show_columns=0; tab_spacer=0; spacer=0; msg_spacer=0
     if ((${#PICK_TAB_GROUPS[@]} > 0 && avail > 0)); then show_tabs=1; avail=$((avail - 1)); fi
     if ((avail > 0)); then show_title=1; avail=$((avail - 1)); fi
     msg_rows=${#PICK_WRAPPED[@]}
@@ -64,6 +65,7 @@ pick_render() {
     hint_rows=${#PICK_HINT[@]}
     ((hint_rows > avail)) && hint_rows=$avail
     avail=$((avail - hint_rows))
+    if [[ $PICK_MODE == choices ]] && ((PICK_HEADED && avail > 0)); then show_columns=1; avail=$((avail - 1)); fi
     if ((avail > 0)); then spacer=1; avail=$((avail - 1)); fi
     if ((msg_rows > 0 && avail > 0)); then msg_spacer=1; avail=$((avail - 1)); fi
     if ((show_tabs && avail > 0)); then tab_spacer=1; avail=$((avail - 1)); fi
@@ -98,6 +100,10 @@ pick_render() {
         pick_frame_row "$PICK_ROW" '' "$PICK_ROW_SPANS"
     fi
     ((tab_spacer)) && pick_frame_row ''
+    if ((show_columns)); then
+        pick_column_line
+        pick_frame_row "$PICK_ROW" "$PICK_STYLE_MUTED"
+    fi
     start=$PICK_OFFSET
     end=$((start + h))
     for g in "${PICK_STICKY[@]}"; do
@@ -120,7 +126,10 @@ pick_render() {
         pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_SPANS"
     done
     ((spacer)) && pick_frame_row ''
-    for ((d=0; d<msg_rows; d++)); do pick_frame_row "${PICK_WRAPPED[d]}" "$msg_style"; done
+    for ((d=0; d<msg_rows; d++)); do
+        if ((d == 0)) && [[ -n $PICK_FIELD ]]; then pick_frame_row "${PICK_WRAPPED[d]}"
+        else pick_frame_row "${PICK_WRAPPED[d]}" "$msg_style"; fi
+    done
     ((msg_spacer)) && pick_frame_row ''
     for ((d=0; d<hint_rows; d++)); do pick_frame_row "${PICK_HINT[d]}" "$PICK_STYLE_MUTED"; done
     if [[ -n $PICK_PREV_ROWS && ( $rows != "$PICK_PREV_ROWS" || $cols != "$PICK_PREV_COLS" ) ]]; then
@@ -186,8 +195,8 @@ pick_tab_line() {
         text[k]=" $PICK_TITLE "
         [[ -n $PICK_STYLE_TAB || $k != "$PICK_TAB_AT" ]] || text[k]="[$PICK_TITLE]"
         pick_clip "${text[k]}" 9999
-        cells[k]=$PICK_CELLS
-        total=$((total + PICK_CELLS))
+        cells[k]=$PICK_WIDTH
+        total=$((total + PICK_WIDTH))
     done
     total=$((total + n - 1))
     first=0; last=$((n - 1))
