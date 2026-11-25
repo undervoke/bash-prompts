@@ -82,8 +82,8 @@ pick_capture_talk() {
 pick_capture_stop() {
     # Also run when a signal ends the prompt.
     if [[ -n $PICK_CAPTURE_PID ]]; then
-        kill "$PICK_CAPTURE_PID" 2>/dev/null
-        wait "$PICK_CAPTURE_PID" 2>/dev/null
+        kill "$PICK_CAPTURE_PID" 2>/dev/null || true
+        wait "$PICK_CAPTURE_PID" 2>/dev/null || true
     fi
     PICK_CAPTURE_PID=
     if [[ -n $PICK_CAPTURE_DIR ]]; then rm -rf "$PICK_CAPTURE_DIR"; fi
