@@ -91,8 +91,12 @@ pick_read_key() {
                     while IFS= read -rsn1 -t 1 part; do
                         [[ -z ${PICK_GOT_SIGNAL:-} ]] || break
                         seq="$seq$part"
-                        [[ $part == [@-~] ]] && break
-                        [[ $part == [\ -?] ]] || break
+                        # Parameter and intermediate bytes, listed because a
+                        # range would follow the locale's collation.
+                        case $part in
+                            [0123456789:\;\<=\>?]|[\ \!\"\#\$%\&\'\(\)\*+,./-]) ;;
+                            *) break ;;
+                        esac
                     done
                     ;;
             esac
