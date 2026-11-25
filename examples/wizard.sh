@@ -1,6 +1,6 @@
 #!/bin/bash
 # Consumer-side composition: step order, saved answers, and navigation live here.
-# Enter moves forward, Left/Backspace goes back, and the review lists each
+# Enter moves forward, Shift+Tab goes back, and the review lists each
 # answer so it can be changed directly.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
 source "$ROOT/lib/bash-prompts.sh" || exit 2
@@ -43,7 +43,7 @@ ask_step() {
             PICK_ID=("${format_ids[@]}")
             PICK_LABEL=("${format_labels[@]}")
             PICK_STATE=("${format_state[@]}")
-            PICK_KEYS_BACK=(Left Backspace)
+            PICK_KEYS_BACK=(Shift+Tab)
             ;;
     esac
     PICK_GROUP=()
@@ -86,7 +86,7 @@ while true; do
     )
     PICK_GROUP=('' '' '')
     PICK_VALUE=finish
-    PICK_KEYS_BACK=(Left Backspace)
+    PICK_KEYS_BACK=(Shift+Tab)
     rc=0
     pick_select || rc=$?
     case $rc in

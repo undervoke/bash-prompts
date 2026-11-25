@@ -274,8 +274,9 @@ PICK_KEYS_SUBMIT=(Enter f)
 ```
 
 A token is one printable ASCII character or one of `Up`, `Down`, `Left`,
-`Right`, `Space`, `Enter`, `Esc`, `Tab`, `Backspace`. A literal space
-normalizes to `Space`. Arrow tokens recognize unmodified CSI and SS3 terminal sequences.
+`Right`, `Space`, `Enter`, `Esc`, `Tab`, `Shift+Tab`, `Backspace`. A literal
+space normalizes to `Space`. Arrow tokens recognize unmodified CSI and SS3
+terminal sequences.
 Empty arrays disable an action. Unmapped keys have no effect. Each key
 belongs to one action; repeated aliases within that action are deduplicated.
 
@@ -365,7 +366,7 @@ Left/Right group jumps at depth 2; `separators` demonstrates dividers in a
 single-select list without groups.
 
 `examples/wizard.sh` asks two `pick_multiselect` steps and a `pick_select`
-review. Enter moves to the next step; Left or Backspace (bound through
+review. Enter moves to the next step; Shift+Tab (bound through
 `PICK_KEYS_BACK` from the second step on) returns to the previous one with its
 answers kept. The review lists each answer: Enter on one reopens that step and
 returns to the review, Enter on Finish prints the result. Esc or `q` cancels.

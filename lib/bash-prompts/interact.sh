@@ -97,6 +97,7 @@ pick_interact() {
                 '[B'|'OB') key=Down ;;
                 '[C'|'OC') key=Right ;;
                 '[D'|'OD') key=Left ;;
+                '[Z') key=Shift+Tab ;;
                 *) key= ;;
             esac
         else

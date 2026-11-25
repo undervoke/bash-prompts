@@ -65,7 +65,7 @@
 #   PICK_KEYS_CLEAR=(n)          PICK_KEYS_SUBMIT=(Enter)
 #   PICK_KEYS_CANCEL=(q Q Esc)   PICK_KEYS_BACK=()
 # Elements are a single printable ASCII character or one of:
-#   Up Down Left Right Space Enter Esc Tab Backspace.
+#   Up Down Left Right Space Enter Esc Tab Shift+Tab Backspace.
 # Empty arrays disable an action. A key may belong to only one action.
 # Prev/next group focus the first included item of the adjacent group at
 # PICK_GROUP_JUMP_DEPTH; an item above that depth moves to the nearest group

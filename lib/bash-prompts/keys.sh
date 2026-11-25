@@ -47,7 +47,7 @@ pick_bind_keys() {
     for key in "$@"; do
         [[ $key != ' ' ]] || key=Space
         case $key in
-            Up|Down|Left|Right|Space|Enter|Esc|Tab|Backspace|[[:graph:]]) ;;
+            Up|Down|Left|Right|Space|Enter|Esc|Tab|Shift+Tab|Backspace|[[:graph:]]) ;;
             *) pick_err "invalid key token '$key' for $action"; return 1 ;;
         esac
         found=0
