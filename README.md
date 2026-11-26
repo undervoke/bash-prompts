@@ -260,8 +260,11 @@ pick_group submit 'Submit'
 PICK_SUBMIT_TAB=submit
 PICK_CONFIRM_PROMPT='Apply these changes?'
 PICK_KEYS_TOGGLE=(Space Enter)
-PICK_KEYS_SUBMIT=(Option+Enter)
+PICK_KEYS_SUBMIT=()
 ```
+
+The empty Submit binding leaves Enter for Toggle, so submission goes through
+the Submit tab.
 
 The list takes no focus: Up and Down scroll it, Left and Right choose between
 Submit and Back, and Enter or Space runs the chosen one. Back and Cancel keys return
@@ -480,10 +483,9 @@ A token is one printable ASCII character or one of `Up`, `Down`, `Left`,
 `Option+Enter`. A literal space normalizes to `Space`. Arrow tokens recognize
 unmodified CSI and SS3 terminal sequences. `Cmd+Enter` is `CSI 13;9u`, which
 requires a custom terminal key mapping; tmux can pass it on as `Option+Enter`.
-`Option+Enter` is Esc followed by Enter. To send it, set the terminal to send
+`Option+Enter` is Esc followed by Enter and requires the terminal to send
 Option as Meta (iTerm2's “Esc+” or Terminal.app's “Use Option as Meta key”).
-Windows Terminal uses Alt+Enter to toggle full screen by default; use the
-[Submit tab](#submit-tab-and-confirmation) when the shortcut is unavailable.
+Windows Terminal uses Alt+Enter to toggle full screen by default.
 Empty arrays disable an action. Unmapped keys have no effect. Each key
 belongs to one action; repeated aliases within that action are deduplicated.
 
