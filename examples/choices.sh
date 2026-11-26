@@ -1,6 +1,6 @@
 #!/bin/bash
 # One value per row in tabs; rows turn off with what they require, and the last
-# tab and Cmd+Enter lead to a confirmation.
+# tab and Option+Enter lead to a confirmation.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
 source "$ROOT/lib/bash-prompts.sh" || exit 2
 
@@ -14,7 +14,7 @@ pick_group submit 'Submit'
 PICK_SUBMIT_TAB=submit
 PICK_CONFIRM_PROMPT='Apply these settings?'
 PICK_KEYS_TOGGLE=(Space Enter)
-PICK_KEYS_SUBMIT=(Cmd+Enter Option+Enter)
+PICK_KEYS_SUBMIT=(Option+Enter)
 PICK_ID=(editor keymap font sync sleep firewall)
 PICK_LABEL=('Editor' 'Editor key map' 'Editor font' 'Editor sync service' 'Sleep rules' 'Firewall')
 PICK_GROUP=(editor editor editor network power network)
