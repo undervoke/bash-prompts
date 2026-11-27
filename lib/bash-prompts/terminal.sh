@@ -292,7 +292,7 @@ pick_frame_line() {
     ((walls)) || return 0
     # The ellipsis, measured as two cells for clipping, takes one like the
     # walls.
-    pick_clip "${PICK_CLIPPED//$PICK_ELLIPSIS/.}" "$width"
+    pick_clip "${PICK_CLIPPED//…/.}" "$width"
     printf -v pad '%*s' "$((width - PICK_WIDTH))" ''
     PICK_LINE=$left$PICK_LINE$pad$right
 }
