@@ -273,28 +273,18 @@ pick_paint_line() {
 }
 
 pick_frame_line() {
-    # $1 = frame row, $2 = width; sets PICK_LINE to the row painted inside
-    # the walls of its frames: a tab's heavy, then a sub-tab's light.
-    # The frames span the width pick_render laid out, one column short of
-    # the terminal.
-    local walls=${PICK_FRAME_WALLS[$1]:-0} width=$2 left= right= pad
-    if ((walls)); then
-        width=$((PICK_TCOLS - 1 - 4 * walls))
-        left="$PICK_HEAVY_V "
-        right=" $PICK_HEAVY_V"
-        if ((walls > 1)); then
-            left+="$PICK_BOX_V "
-            right=" $PICK_BOX_V$right"
-        fi
-    fi
+    # $1 = frame row, $2 = width; sets PICK_LINE to the row painted between
+    # its painted left and right parts, clipped and padded to the width they
+    # leave it, if any.
+    local width=${PICK_FRAME_WIDTH[$1]:-$2} pad
     pick_clip "${PICK_FRAME[$1]}" "$width"
     pick_paint_line "$1"
-    ((walls)) || return 0
+    [[ -n ${PICK_FRAME_WIDTH[$1]} ]] || return 0
     # The ellipsis, measured as two cells for clipping, takes one like the
     # walls.
     pick_clip "${PICK_CLIPPED//…/.}" "$width"
     printf -v pad '%*s' "$((width - PICK_WIDTH))" ''
-    PICK_LINE=$left$PICK_LINE$pad$right
+    PICK_LINE=${PICK_FRAME_LEFT[$1]}$PICK_LINE$pad${PICK_FRAME_RIGHT[$1]}
 }
 
 pick_emit_frame() {

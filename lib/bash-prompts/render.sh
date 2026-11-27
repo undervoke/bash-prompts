@@ -22,12 +22,22 @@ pick_sticky() {
 pick_frame_row() {
     # $1 = text, $2 = style, $3 = spans: pairs of an offset and the role
     # whose PICK_STYLE_* applies from there. The row goes inside PICK_WALLS
-    # frames.
+    # frames, which span the width pick_render laid out, one column short of
+    # the terminal: a tab's heavy, then a sub-tab's light.
     local n=${#PICK_FRAME[@]}
     PICK_FRAME[n]=$1
-    PICK_FRAME_WALLS[n]=$PICK_WALLS
     PICK_FRAME_STYLE[n]=${2-}
     PICK_FRAME_SPANS[n]=${3-}
+    PICK_FRAME_LEFT[n]=
+    PICK_FRAME_RIGHT[n]=
+    PICK_FRAME_WIDTH[n]=
+    ((PICK_WALLS)) || return 0
+    PICK_FRAME_WIDTH[n]=$((PICK_TCOLS - 1 - 4 * PICK_WALLS))
+    PICK_FRAME_LEFT[n]="$PICK_HEAVY_V "
+    PICK_FRAME_RIGHT[n]=" $PICK_HEAVY_V"
+    ((PICK_WALLS > 1)) || return 0
+    PICK_FRAME_LEFT[n]+="$PICK_BOX_V "
+    PICK_FRAME_RIGHT[n]=" $PICK_BOX_V${PICK_FRAME_RIGHT[n]}"
 }
 
 pick_render() {
@@ -43,7 +53,7 @@ pick_render() {
     # The inline painter keeps the last column free.
     pick_hint "$((cols - 1))"
     if ((PICK_CONFIRMING)); then
-        PICK_FRAME=(); PICK_FRAME_STYLE=(); PICK_FRAME_SPANS=(); PICK_FRAME_WALLS=(); PICK_WALLS=0
+        PICK_FRAME=(); PICK_FRAME_STYLE=(); PICK_FRAME_SPANS=(); PICK_WALLS=0
         pick_render_confirm "$rows" "$((cols - 1))"
         pick_paint "$rows" "$cols"
         return
@@ -111,7 +121,6 @@ pick_render() {
     PICK_FRAME=()
     PICK_FRAME_STYLE=()
     PICK_FRAME_SPANS=()
-    PICK_FRAME_WALLS=()
     PICK_WALLS=0
     if [[ -n ${PICK_PROMPT-} ]]; then title=$PICK_PROMPT
     elif [[ $PICK_MODE == single ]]; then title='Choose one item'
