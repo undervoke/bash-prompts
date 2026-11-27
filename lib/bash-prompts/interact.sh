@@ -95,6 +95,10 @@ pick_interact() {
                     if ((${#PICK_TAB_GROUPS[@]})); then PICK_ON_TABS=1; fi
                 fi
                 ;;
+            leave)
+                PICK_MSG=
+                if ((!PICK_ON_TABS && PICK_TAB_SUBS[PICK_TAB_AT])); then PICK_ON_TABS=2; else PICK_ON_TABS=1; fi
+                ;;
             prev_group) PICK_MSG=; pick_jump_group -1 ;;
             next_group) PICK_MSG=; pick_jump_group 1 ;;
             prev_tab) PICK_MSG=; pick_switch_page -1 ;;

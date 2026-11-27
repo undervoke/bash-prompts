@@ -131,7 +131,8 @@
 # edit function, and on other rows does what Toggle does; without Edit keys
 # Toggle edits. Both run an action in the submit tab. Up from the first row
 # focuses the sub-tabs, if any, then the tabs, where prev/next value move
-# between them; prev/next tab go through sub-tabs in turn. All and Clear
+# between them; prev/next tab go through sub-tabs in turn. Esc leaves the
+# rows for the sub-tabs or tabs, and the sub-tabs for the tabs. All and Clear
 # bindings apply only to multiselect and dependencies; tab bindings only with
 # PICK_TABS.
 # Back applies to every entry point but pick_run.

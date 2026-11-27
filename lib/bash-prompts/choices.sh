@@ -214,7 +214,13 @@ pick_edit_row() {
 
 pick_tab_action() {
     # With the focus on the tabs or the sub-tabs, Left and Right move between
-    # them, and an action on a row goes to the rows first.
+    # them, and an action on a row goes to the rows first. Esc leaves the
+    # rows for the sub-tabs, if any, and the sub-tabs for the tabs, whatever
+    # it is bound to.
+    if [[ $PICK_PRESSED == Esc ]] && ((${#PICK_TAB_GROUPS[@]} && PICK_ON_TABS != 1)); then
+        PICK_KEY_ACTION=leave
+        return 0
+    fi
     ((PICK_ON_TABS)) || return 0
     case $PICK_KEY_ACTION in
         prev_value) PICK_KEY_ACTION=prev_bar ;;

@@ -32,6 +32,18 @@ pick_hint() {
             elif [[ ${help[9]} != off ]]; then verbs[9]=${verbs[8]}; fi
         fi
     else verbs=(up down prev next prev next - - toggle - all none submit back cancel); fi
+    if ((${#PICK_TAB_GROUPS[@]} && PICK_ON_TABS != 1 && !PICK_CONFIRMING)); then
+        # Esc leaves for the tabs here, whatever it is bound to.
+        for ((i=0; i<${#help[@]}; i++)); do
+            seg=/${help[i]}/
+            seg=${seg//\/Esc\//\/}
+            seg=${seg#/}
+            seg=${seg%/}
+            help[i]=${seg:-off}
+        done
+        verbs[${#verbs[@]}]=tabs
+        help[${#help[@]}]=Esc
+    fi
     if ((PICK_ON_TABS && !PICK_CONFIRMING)); then
         turn=tab
         verbs[2]=-; verbs[3]=-; verbs[4]=-; verbs[5]=-; verbs[6]=prev; verbs[7]=next; verbs[8]=-; verbs[9]=-

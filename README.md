@@ -204,8 +204,10 @@ onto a frame around its rows, with two cells of space around each label:
 ```
 
 `[` and `]` change the tab from anywhere. Up from the first row moves the focus to
-the tabs, where Left and Right change the tab, and Down returns to the rows. The
-active tab is bold, and reversed while the tabs have the focus.
+the tabs, where Left and Right change the tab, and Down returns to the rows. Esc
+leaves the rows for the tabs, whatever it is bound to; on the tabs it does what
+it is bound to. The active tab is bold, and reversed while the tabs have the
+focus.
 
 On a narrow terminal the active tab and the [submit tab](#submit-tab-and-confirmation)
 stay visible and `<` and `>` stand for the tabs left out. The frame takes three
@@ -251,7 +253,8 @@ and with one cell around each label, so the rows of a sub-tab sit inside two:
 
 `[` and `]` go through the sub-tabs of a tab in turn. Up from the first row
 reaches the sub-tabs, then the tabs; Left and Right change the row that has the
-focus, and a tab reopens at the sub-tab it showed last.
+focus, and a tab reopens at the sub-tab it showed last. Esc leaves the rows for
+the sub-tabs, and the sub-tabs for the tabs.
 
 ## Value rows
 
