@@ -2,18 +2,22 @@
 # Repository example launcher; each example owns its interaction and result.
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
 
-names=(select checkbox dependencies lock choices subtabs lefttabs embedded keybinding keys nested separators wizard screen)
+# Examples show either an input element or a layout that holds them.
+kinds=(inputs layouts)
+kind_labels=('Input elements' 'Layouts and containers')
+names=(select checkbox dependencies lock choices keybinding keys subtabs lefttabs embedded nested separators wizard screen)
+groups=(inputs inputs inputs inputs inputs inputs inputs layouts layouts layouts layouts layouts layouts layouts)
 descriptions=(
     'Choose one item from grouped options'
     'Check several items, some preselected, with notes'
     'Checking an item adds what it requires'
     'Required items stay locked while needed'
     'One value per row, in tabs'
+    'A key per action, in columns, and one key on its own'
+    'The same checklist with remapped keys'
     'Tabs that hold sub-tabs'
     'Tabs in a left column, with a key that sets the others'
     'Left tabs inside a sub-tab, beside ordinary tabs'
-    'A key per action, in columns, and one key on its own'
-    'The same checklist with remapped keys'
     'Recursive groups with tail ordering, separators, and jumps'
     'Display-only dividers without groups'
     'Steps with back navigation and a review'
@@ -21,20 +25,25 @@ descriptions=(
 )
 
 list_examples() {
-    local i
-    for ((i=0; i<${#names[@]}; i++)); do
-        printf '  %s. %-14s %s\n' "$((i + 1))" "${names[i]}" "${descriptions[i]}"
+    local i k
+    for ((k=0; k<${#kinds[@]}; k++)); do
+        ((k == 0)) || printf '\n'
+        printf '%s\n' "${kind_labels[k]}"
+        for ((i=0; i<${#names[@]}; i++)); do
+            [[ ${groups[i]} == "${kinds[k]}" ]] || continue
+            printf '  %2s. %-14s %s\n' "$((i + 1))" "${names[i]}" "${descriptions[i]}"
+        done
     done
 }
 
 usage() {
-    printf 'Usage: %s [select|checkbox|dependencies|lock|choices|subtabs|lefttabs|embedded|keybinding|keys|nested|separators|wizard|screen|--list]\n' "$0"
+    printf 'Usage: %s [select|checkbox|dependencies|lock|choices|keybinding|keys|subtabs|lefttabs|embedded|nested|separators|wizard|screen|--list]\n' "$0"
 }
 
 run_example() {
     case $1 in
         lock) /bin/bash "$ROOT/examples/dependencies.sh" lock ;;
-        select|checkbox|dependencies|choices|subtabs|lefttabs|embedded|keybinding|keys|nested|separators|wizard|screen)
+        select|checkbox|dependencies|choices|keybinding|keys|subtabs|lefttabs|embedded|nested|separators|wizard|screen)
             /bin/bash "$ROOT/examples/$1.sh"
             ;;
         *) printf 'Unknown example: %s\n' "$1" >&2; usage >&2; return 2 ;;
@@ -58,7 +67,9 @@ fi
 
 source "$ROOT/lib/bash-prompts.sh" || exit 2
 PICK_PROMPT='bash-prompts examples'
+for ((k=0; k<${#kinds[@]}; k++)); do pick_group "${kinds[k]}" "${kind_labels[k]}"; done
 PICK_ID=("${names[@]}")
+PICK_GROUP=("${groups[@]}")
 PICK_LABEL=()
 for ((i=0; i<${#names[@]}; i++)); do
     PICK_LABEL[i]=$(printf '%-13s %s' "${names[i]}" "${descriptions[i]}")

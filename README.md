@@ -737,8 +737,9 @@ ambiguous-width characters as wide can still wrap those rows.
 
 ## Interactive examples
 
-Run `./demo` from the repository root. The launcher uses `pick_select`:
-move to an example with Up/Down and press Enter to run it immediately.
+Run `./demo` from the repository root. The launcher uses `pick_select`, with
+the examples of input elements and those of layouts and containers under their
+own headers: move to an example with Up/Down and press Enter to run it immediately.
 The example runs in place and prints its result, and the launcher reopens
 below it with that item still highlighted. Press `q` or Esc there to exit.
 Use a name to run an example directly and return its exit status:
@@ -751,11 +752,11 @@ Use a name to run an example directly and return its exit status:
 ./demo dependencies
 ./demo lock
 ./demo choices
+./demo keybinding
+./demo keys
 ./demo subtabs
 ./demo lefttabs
 ./demo embedded
-./demo keybinding
-./demo keys
 ./demo nested
 ./demo separators
 ./demo wizard
