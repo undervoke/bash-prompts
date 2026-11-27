@@ -71,19 +71,24 @@ pick_interact() {
         fi
         case $PICK_KEY_ACTION in
             up)
+                # PICK_ON_TABS is 1 on the tabs and 2 on the sub-tabs.
                 PICK_MSG=
-                if ((PICK_ON_TABS)); then
+                if ((PICK_ON_TABS == 2)); then PICK_ON_TABS=1
+                elif ((PICK_ON_TABS)); then
                     if [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then
                         PICK_ON_TABS=0
                         PICK_CURSOR=$((${#PICK_FOCUS[@]} - 1))
                     fi
                 elif ((PICK_CURSOR > 0)); then PICK_CURSOR=$((PICK_CURSOR - 1))
-                elif ((${#PICK_TAB_GROUPS[@]})); then PICK_ON_TABS=1
+                elif ((${#PICK_TAB_GROUPS[@]})); then
+                    PICK_ON_TABS=1
+                    ((!PICK_TAB_SUBS[PICK_TAB_AT])) || PICK_ON_TABS=2
                 elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then PICK_CURSOR=$((${#PICK_FOCUS[@]} - 1)); fi
                 ;;
             down)
                 PICK_MSG=
-                if ((PICK_ON_TABS)); then PICK_ON_TABS=0
+                if ((PICK_ON_TABS == 1 && PICK_TAB_SUBS[PICK_TAB_AT])); then PICK_ON_TABS=2
+                elif ((PICK_ON_TABS)); then PICK_ON_TABS=0
                 elif ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)); then PICK_CURSOR=$((PICK_CURSOR + 1))
                 elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then
                     PICK_CURSOR=0
@@ -92,8 +97,10 @@ pick_interact() {
                 ;;
             prev_group) PICK_MSG=; pick_jump_group -1 ;;
             next_group) PICK_MSG=; pick_jump_group 1 ;;
-            prev_tab) PICK_MSG=; pick_switch_tab -1 ;;
-            next_tab) PICK_MSG=; pick_switch_tab 1 ;;
+            prev_tab) PICK_MSG=; pick_switch_page -1 ;;
+            next_tab) PICK_MSG=; pick_switch_page 1 ;;
+            prev_bar) PICK_MSG=; if ((PICK_ON_TABS == 2)); then pick_switch_subtab -1; else pick_switch_tab -1; fi ;;
+            next_bar) PICK_MSG=; if ((PICK_ON_TABS == 2)); then pick_switch_subtab 1; else pick_switch_tab 1; fi ;;
             toggle) if [[ $PICK_MODE == choices ]]; then pick_change_value; else pick_action toggle; fi ;;
             edit) pick_edit_row ;;
             prev_value) [[ $PICK_MODE != choices ]] || pick_next_value -1 ;;

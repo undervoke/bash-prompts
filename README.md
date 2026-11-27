@@ -92,7 +92,7 @@ Parallel, dense, zero-based arrays describe each row; `PICK_VALUE` is a scalar:
 | `PICK_STATE` | Selected flags (`0`/`1`) for multi-selection, input and output. |
 | `PICK_VALUE` | Initial and submitted ID for single selection. |
 | `PICK_PROMPT` | One line shown above the list. Unset shows a generic title. |
-| `PICK_TABS` / `PICK_TAB` | Tabs over the root groups; see [Tabs](#tabs). |
+| `PICK_TABS` / `PICK_TAB` / `PICK_SUBTABS` | Tabs over the root groups, and sub-tabs; see [Tabs](#tabs). |
 
 `pick_multiselect` keeps the incoming selected flags, excludes invalid rows,
 and accepts an empty selection. Dependency arrays do not affect it.
@@ -199,6 +199,48 @@ On a narrow terminal the active tab and the [submit tab](#submit-tab-and-confirm
 stay visible and `<` and `>` stand for the tabs left out. Without these styles the
 active tab is bracketed, as `[Tab]` and `[> Tab]`.
 
+### Sub-tabs
+
+`PICK_SUBTABS` lists root group IDs whose child groups become sub-tabs of that
+tab, in a row of their own; other tabs stay as they are. Every included row of
+such a tab needs a child group, and deeper groups keep their headers inside a
+sub-tab. `PICK_TAB` may name a sub-tab, and on output names the active one; a tab
+named instead opens at its first sub-tab. `PICK_GROUP_JUMP_DEPTH` still counts
+from the root, so sub-tabs are depth 2.
+
+```bash
+pick_group keys 'Keys'
+pick_group desktop 'Desktop' keys
+pick_group terminal 'Terminal' keys
+PICK_SUBTABS=(keys)
+PICK_TAB=desktop
+```
+
+Where any tab has sub-tabs, the active tab is drawn as a folder tab, a box open
+at the bottom onto a frame around its contents. Sub-tabs are drawn the same way
+inside that frame, so the rows of a sub-tab sit inside two:
+
+```text
+         ╭──────╮
+  System │ Keys │ Apps
+╭────────╯      ╰────────────────────────────╮
+│                  ╭─────────╮               │
+│   Shared actions │ Desktop │ Terminal      │
+│ ╭────────────────╯         ╰─────────────╮ │
+│ │ Windows                                │ │
+│ │   > Next window      Cmd+`             │ │
+│ ╰────────────────────────────────────────╯ │
+╰────────────────────────────────────────────╯
+```
+
+`[` and `]` go through the sub-tabs of a tab in turn. Up from the first row
+reaches the sub-tabs, then the tabs; Left and Right change the row that has the
+focus, and a tab reopens at the sub-tab it showed last. The active tab and
+sub-tab are bold rather than underlined. Each frame takes four columns.
+Outside a UTF-8 locale the frames are drawn with `+`, `-`, and `|`, and a
+terminal that draws ambiguous-width characters wide misaligns them. A terminal
+too short for the frames shows the tabs and sub-tabs as two rows without them.
+
 ## Value rows
 
 `pick_choices` gives each row a list of values and no checkbox: the row always
@@ -231,7 +273,8 @@ that does not fit its row is shown in full below the list while focused.
 `PICK_DEPS` names prerequisites with the grammar described below, and a
 prerequisite is met while its value is not one of its `PICK_OFF` values. While
 one is off, a row can only stay at its current value or turn off, and it names
-what it requires, with the tab of a prerequisite shown elsewhere. Turning a
+what it requires, with the tab of a prerequisite shown elsewhere, and its
+sub-tab after a colon. Turning a
 prerequisite off moves the rows that need it to their current off value or else
 their first one, and a message names them. A prerequisite that was off from the
 start leaves the row's current value alone. `PICK_CHOICE` keeps what was picked,
@@ -429,7 +472,7 @@ Each part of a prompt has one look, following the text roles of
 | Title | Bold cyan |
 | Group header | Cyan |
 | Focused row | Bold |
-| Active tab | Bold underline; reverse video while the tabs have the focus |
+| Active tab | Bold underline, or bold in a frame; reverse video while its row has the focus |
 | Changed value | Yellow |
 | Key that two rows share | Red |
 | Column header, note, read-only row, separator, key hint | Dim |
@@ -577,6 +620,7 @@ Use a name to run an example directly and return its exit status:
 ./demo dependencies
 ./demo lock
 ./demo choices
+./demo subtabs
 ./demo keybinding
 ./demo keys
 ./demo nested
@@ -593,7 +637,8 @@ repeated labels with distinct IDs, and notes. `dependencies` shows
 transitive automatic selection and cascading deselection, then prints each
 selected ID as direct or auto with the selected IDs that require it; `lock`
 shows the alternative locking behavior. `choices` shows value rows in tabs,
-with rows that turn off with what they require, a submit tab, and a confirmation; `keybinding` shows a key per row
+with rows that turn off with what they require, a submit tab, and a confirmation; `subtabs` shows a tab
+whose sub-tabs share that frame, with headers inside a sub-tab; `keybinding` shows a key per row
 in columns, with a check, and a key on its own. `nested` demonstrates four levels,
 parent counts, tail ordering, separators inside and between groups, and
 Left/Right group jumps at depth 2; `separators` demonstrates dividers in a

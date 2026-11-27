@@ -24,7 +24,8 @@
 #   PICK_PROMPT     one line shown above the list; unset uses a generic title.
 #   PICK_TABS       1 shows the root groups as tabs below the prompt.
 #   PICK_TAB        active tab's group ID: input/output; an unknown or unset
-#     ID starts at the first tab.
+#     ID starts at the first tab. On a tab with sub-tabs, the active sub-tab's.
+#   PICK_SUBTABS    root group IDs whose child groups show as sub-tabs.
 # Value rows (pick_choices) additionally use:
 #   PICK_VALUES[i]  comma-separated values; a row always holds one of them.
 #   PICK_CURRENT[i] value the row starts from; unset uses the first value.
@@ -129,13 +130,15 @@
 # Prev/next value and Toggle move a value row through its values. Edit runs its
 # edit function, and on other rows does what Toggle does; without Edit keys
 # Toggle edits. Both run an action in the submit tab. Up from the first row
-# focuses the tabs, where prev/next value move between them. All and Clear bindings apply only to
-# multiselect and dependencies; tab bindings only with PICK_TABS.
+# focuses the sub-tabs, if any, then the tabs, where prev/next value move
+# between them; prev/next tab go through sub-tabs in turn. All and Clear
+# bindings apply only to multiselect and dependencies; tab bindings only with
+# PICK_TABS.
 # Back applies to every entry point but pick_run.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
-#   row, underlined active tab (reversed while the tabs have the focus), yellow
-#   changed value and warning, dim column headers, notes, read-only rows, separators and key hint, red error and
+#   row, underlined active tab (bold in a frame, reversed while its row has
+#   the focus), yellow changed value and warning, dim column headers, notes, read-only rows, separators and key hint, red error and
 #   shared key. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
 #   capability omits colors while supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end, also
@@ -156,6 +159,7 @@ PICK_WRAP_NAVIGATION=1
 PICK_GROUP_TAIL=()
 PICK_TABS=0
 PICK_TAB=
+PICK_SUBTABS=()
 PICK_SUBMIT_TAB=
 PICK_CONFIRM_PROMPT=
 PICK_REVIEW=
@@ -212,9 +216,20 @@ PICK_GROW=()
 PICK_IGROUP=()
 PICK_ROOT=0
 PICK_TAB_GROUPS=()
-PICK_TAB_CURSOR=()
-PICK_TAB_OFFSET=()
+PICK_TAB_FIRST=()
+PICK_TAB_SUBS=()
+PICK_TAB_PAGE=()
 PICK_TAB_AT=0
+PICK_PAGES=()
+PICK_PAGE_TAB=()
+PICK_PAGE_CURSOR=()
+PICK_PAGE_OFFSET=()
+PICK_PAGE_AT=0
+PICK_PAGE_OF=0
+PICK_SUBBED=0
+PICK_CHILD_TABS=()
+PICK_BAR_LEFT=-1
+PICK_BAR_RIGHT=-1
 PICK_SUBMIT_GROUP=-1
 PICK_ON_TABS=0
 PICK_AT=0
@@ -282,6 +297,13 @@ PICK_CLIPPED=
 PICK_WIDTH=0
 PICK_ELLIPSIS=
 PICK_ARROW=
+PICK_BOX_H=
+PICK_BOX_V=
+PICK_BOX_TL=
+PICK_BOX_TR=
+PICK_BOX_BL=
+PICK_BOX_BR=
+PICK_RULE=
 PICK_WRAPPED=()
 PICK_NOTES=
 PICK_LINE=
@@ -292,6 +314,8 @@ PICK_PREV_COLS=
 PICK_FRAME=()
 PICK_FRAME_STYLE=()
 PICK_FRAME_SPANS=()
+PICK_FRAME_WALLS=()
+PICK_WALLS=0
 PICK_ROW=
 PICK_ROW_STYLE=
 PICK_ROW_SPANS=

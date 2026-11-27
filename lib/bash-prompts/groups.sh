@@ -173,43 +173,86 @@ pick_build_focus() {
     pick_build_rows
 }
 
-pick_build_tabs() {
-    # With PICK_TABS, the root groups become tabs in their display order and
-    # the rows of one of them are shown at a time.
+pick_group_has_subtabs() {
+    local id=$1 i
+    for ((i=0; i<${#PICK_SUBTABS[@]}; i++)); do
+        [[ ${PICK_SUBTABS[i]} == "$id" ]] && return 0
+    done
+    return 1
+}
+
+pick_child_tabs() {
+    # $1 = group, $2 = what its children are; fills PICK_CHILD_TABS with its
+    # child groups in display order. Its own items have no tab to appear in.
     local node g i IFS=' '
     local -a tail=()
-    PICK_TAB_GROUPS=(); PICK_TAB_CURSOR=(); PICK_TAB_OFFSET=()
-    PICK_TAB_AT=0
-    PICK_ROOT=0
-    PICK_SUBMIT_GROUP=-1
-    [[ ${PICK_TABS:-0} == 1 ]] || return 0
-    for node in ${PICK_GCHILDREN[0]}; do
+    PICK_CHILD_TABS=()
+    for node in ${PICK_GCHILDREN[$1]}; do
         case $node in
             g*)
                 g=${node#g}
                 if pick_group_is_tail "${PICK_GID[g]}"; then tail[${#tail[@]}]=$g
-                else PICK_TAB_GROUPS[${#PICK_TAB_GROUPS[@]}]=$g; fi
+                else PICK_CHILD_TABS[${#PICK_CHILD_TABS[@]}]=$g; fi
                 ;;
             i*)
                 i=${node#i}
-                pick_err "item '${PICK_ID[i]-${PICK_LABEL[i]}}' needs a group to appear in a tab"
+                pick_err "item '${PICK_ID[i]-${PICK_LABEL[i]}}' needs a group to appear in a $2"
                 return 1
                 ;;
         esac
     done
-    for g in "${tail[@]}"; do PICK_TAB_GROUPS[${#PICK_TAB_GROUPS[@]}]=$g; done
+    for g in "${tail[@]}"; do PICK_CHILD_TABS[${#PICK_CHILD_TABS[@]}]=$g; done
+    return 0
+}
+
+pick_build_tabs() {
+    # With PICK_TABS, the root groups become tabs in their display order, and
+    # with PICK_SUBTABS the child groups of a tab become its sub-tabs. The
+    # rows of one page are shown at a time: a tab without sub-tabs, or a
+    # sub-tab. Pages follow the order of the tabs, sub-tabs in turn.
+    local g k p
+    PICK_TAB_GROUPS=(); PICK_TAB_FIRST=(); PICK_TAB_SUBS=(); PICK_TAB_PAGE=()
+    PICK_PAGES=(); PICK_PAGE_TAB=(); PICK_PAGE_CURSOR=(); PICK_PAGE_OFFSET=()
+    PICK_TAB_AT=0
+    PICK_PAGE_AT=0
+    PICK_SUBBED=0
+    PICK_ROOT=0
+    PICK_SUBMIT_GROUP=-1
+    [[ ${PICK_TABS:-0} == 1 ]] || return 0
+    pick_child_tabs 0 tab || return 1
+    PICK_TAB_GROUPS=("${PICK_CHILD_TABS[@]}")
     ((${#PICK_TAB_GROUPS[@]})) || return 0
     pick_build_submit_tab || return 1
-    for ((i=0; i<${#PICK_TAB_GROUPS[@]}; i++)); do
-        [[ ${PICK_GID[${PICK_TAB_GROUPS[i]}]} != "${PICK_TAB-}" ]] || PICK_TAB_AT=$i
+    for ((k=0; k<${#PICK_TAB_GROUPS[@]}; k++)); do
+        g=${PICK_TAB_GROUPS[k]}
+        PICK_TAB_FIRST[k]=${#PICK_PAGES[@]}
+        PICK_TAB_PAGE[k]=${#PICK_PAGES[@]}
+        PICK_TAB_SUBS[k]=0
+        PICK_CHILD_TABS=("$g")
+        if ((g != PICK_SUBMIT_GROUP)) && pick_group_has_subtabs "${PICK_GID[g]}"; then
+            pick_child_tabs "$g" sub-tab || return 1
+            PICK_TAB_SUBS[k]=${#PICK_CHILD_TABS[@]}
+            PICK_SUBBED=1
+        fi
+        for g in "${PICK_CHILD_TABS[@]}"; do
+            PICK_PAGE_TAB[${#PICK_PAGES[@]}]=$k
+            PICK_PAGES[${#PICK_PAGES[@]}]=$g
+        done
+    done
+    # PICK_TAB names a tab, which opens at its first sub-tab, or a sub-tab.
+    for ((k=0; k<${#PICK_TAB_GROUPS[@]}; k++)); do
+        [[ ${PICK_GID[${PICK_TAB_GROUPS[k]}]} != "${PICK_TAB-}" ]] || PICK_PAGE_AT=${PICK_TAB_FIRST[k]}
+    done
+    for ((p=0; p<${#PICK_PAGES[@]}; p++)); do
+        [[ ${PICK_GID[${PICK_PAGES[p]}]} != "${PICK_TAB-}" ]] || PICK_PAGE_AT=$p
     done
     if [[ $PICK_MODE == single ]] && ((PICK_INITIAL_INDEX >= 0)); then
-        pick_ref_group "$PICK_INITIAL_INDEX" 1
-        for ((i=0; i<${#PICK_TAB_GROUPS[@]}; i++)); do
-            [[ ${PICK_TAB_GROUPS[i]} != "$PICK_REFGROUP" ]] || PICK_TAB_AT=$i
-        done
+        pick_page_of "$PICK_INITIAL_INDEX"
+        PICK_PAGE_AT=$PICK_PAGE_OF
     fi
-    PICK_ROOT=${PICK_TAB_GROUPS[PICK_TAB_AT]}
+    PICK_TAB_AT=${PICK_PAGE_TAB[PICK_PAGE_AT]}
+    PICK_TAB_PAGE[PICK_TAB_AT]=$PICK_PAGE_AT
+    PICK_ROOT=${PICK_PAGES[PICK_PAGE_AT]}
     PICK_TAB=${PICK_GID[PICK_ROOT]}
     return 0
 }
@@ -235,30 +278,57 @@ pick_on_submit_page() {
     ((PICK_ROOT == PICK_SUBMIT_GROUP))
 }
 
-pick_switch_tab() {
-    # $1 = tabs to move by, -1 for the previous one; each keeps its focus.
-    local n=${#PICK_TAB_GROUPS[@]}
-    PICK_TAB_CURSOR[PICK_TAB_AT]=$PICK_CURSOR
-    PICK_TAB_OFFSET[PICK_TAB_AT]=$PICK_OFFSET
-    PICK_TAB_AT=$(((PICK_TAB_AT + $1 + n) % n))
-    PICK_ROOT=${PICK_TAB_GROUPS[PICK_TAB_AT]}
+pick_page_of() {
+    # $1 = item index; sets PICK_PAGE_OF to the page that shows it.
+    local p
+    PICK_PAGE_OF=$PICK_PAGE_AT
+    for ((p=0; p<${#PICK_PAGES[@]}; p++)); do
+        pick_ref_group "$1" "${PICK_GDEPTH[${PICK_PAGES[p]}]}"
+        ((PICK_REFGROUP != PICK_PAGES[p])) || { PICK_PAGE_OF=$p; return 0; }
+    done
+}
+
+pick_show_page() {
+    # $1 = page; each keeps its focus. The sub-tabs lose the focus to the
+    # tabs on a page without them.
+    PICK_PAGE_CURSOR[PICK_PAGE_AT]=$PICK_CURSOR
+    PICK_PAGE_OFFSET[PICK_PAGE_AT]=$PICK_OFFSET
+    PICK_PAGE_AT=$1
+    PICK_TAB_AT=${PICK_PAGE_TAB[$1]}
+    PICK_TAB_PAGE[PICK_TAB_AT]=$1
+    PICK_ROOT=${PICK_PAGES[$1]}
     PICK_TAB=${PICK_GID[PICK_ROOT]}
     pick_build_rows
-    PICK_CURSOR=${PICK_TAB_CURSOR[PICK_TAB_AT]:-0}
-    PICK_OFFSET=${PICK_TAB_OFFSET[PICK_TAB_AT]:-0}
+    PICK_CURSOR=${PICK_PAGE_CURSOR[$1]:-0}
+    PICK_OFFSET=${PICK_PAGE_OFFSET[$1]:-0}
+    ((PICK_ON_TABS != 2 || PICK_TAB_SUBS[PICK_TAB_AT])) || PICK_ON_TABS=1
+}
+
+pick_switch_page() {
+    # $1 = pages to move by, -1 for the previous one.
+    local n=${#PICK_PAGES[@]}
+    pick_show_page "$(((PICK_PAGE_AT + $1 + n) % n))"
+}
+
+pick_switch_tab() {
+    # $1 = tabs to move by; a tab shows the sub-tab it showed last.
+    local n=${#PICK_TAB_GROUPS[@]}
+    pick_show_page "${PICK_TAB_PAGE[(PICK_TAB_AT + $1 + n) % n]}"
+}
+
+pick_switch_subtab() {
+    # $1 = sub-tabs of the active tab to move by.
+    local first=${PICK_TAB_FIRST[PICK_TAB_AT]} n=${PICK_TAB_SUBS[PICK_TAB_AT]}
+    pick_show_page "$((first + (PICK_PAGE_AT - first + $1 + n) % n))"
 }
 
 pick_focus_row() {
-    # $1 = item index; focuses it, in its tab.
+    # $1 = item index; focuses it, on its page.
     local idx=$1 k
     PICK_ON_TABS=0
-    if ((${#PICK_TAB_GROUPS[@]})); then
-        pick_ref_group "$idx" 1
-        for ((k=0; k<${#PICK_TAB_GROUPS[@]}; k++)); do
-            [[ ${PICK_TAB_GROUPS[k]} == "$PICK_REFGROUP" && $k != "$PICK_TAB_AT" ]] || continue
-            pick_switch_tab "$((k - PICK_TAB_AT))"
-            break
-        done
+    if ((${#PICK_PAGES[@]})); then
+        pick_page_of "$idx"
+        ((PICK_PAGE_OF == PICK_PAGE_AT)) || pick_show_page "$PICK_PAGE_OF"
     fi
     for ((k=0; k<${#PICK_FOCUS[@]}; k++)); do
         [[ ${PICK_FOCUS[k]} != "$idx" ]] || PICK_CURSOR=$k

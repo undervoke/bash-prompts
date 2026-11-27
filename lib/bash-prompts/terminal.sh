@@ -166,8 +166,14 @@ pick_prepare_text() {
     # Drawn by the library itself, in ASCII outside UTF-8 locales.
     PICK_ELLIPSIS='..'
     PICK_ARROW='->'
+    PICK_BOX_H=-; PICK_BOX_V='|'
+    PICK_BOX_TL=+; PICK_BOX_TR=+; PICK_BOX_BL=+; PICK_BOX_BR=+
     case ${LC_ALL:-${LC_CTYPE:-${LANG-}}} in
-        *UTF-8*|*utf-8*|*UTF8*|*utf8*) PICK_ELLIPSIS='…'; PICK_ARROW='→' ;;
+        *UTF-8*|*utf-8*|*UTF8*|*utf8*)
+            PICK_ELLIPSIS='…'; PICK_ARROW='→'
+            PICK_BOX_H='─'; PICK_BOX_V='│'
+            PICK_BOX_TL='╭'; PICK_BOX_TR='╮'; PICK_BOX_BL='╰'; PICK_BOX_BR='╯'
+            ;;
     esac
 }
 
@@ -178,7 +184,8 @@ pick_clip() {
     # UTF-8 bytes: characters from U+2000 up (CJK, Hangul, kana, fullwidth
     # forms, emoji, and ambiguous-width symbols) count as two cells. Narrow
     # ones among them are overcounted, which clips early but never wraps,
-    # except that arrows and technical symbols, which show keys, are exact.
+    # except that arrows and technical symbols, which show keys, and box
+    # drawing, which frames tabs, are exact.
     local text=$1 max=$2
     if ((max <= 0)); then PICK_CLIPPED=; PICK_WIDTH=0; return 0; fi
     if [[ $text != *[![:ascii:]]* ]]; then
@@ -208,10 +215,10 @@ pick_clip() {
                 [[ $c < $'\x84' || $c > $'\x87' ]] && cw=1
             elif [[ $b == $'\xe2' ]]; then
                 # U+2180-U+21FF and U+2300-U+23BF, without the wide watch,
-                # hourglass, and angle brackets.
+                # hourglass, and angle brackets, and U+2500-U+257F.
                 case ${text:i+1:2} in
                     $'\x8c'[$'\x9a\x9b\xa9\xaa']) ;;
-                    $'\x86'?|$'\x87'?|$'\x8c'?|$'\x8e'?) cw=1 ;;
+                    $'\x86'?|$'\x87'?|$'\x8c'?|$'\x8e'?|$'\x94'?|$'\x95'?) cw=1 ;;
                 esac
             fi
         else len=4; cw=2; fi
@@ -261,6 +268,25 @@ pick_paint_line() {
     done
 }
 
+pick_frame_line() {
+    # $1 = frame row, $2 = width; sets PICK_LINE to the row painted inside
+    # the walls of its frames. The frames span the width pick_render laid
+    # out, one column short of the terminal.
+    local walls=${PICK_FRAME_WALLS[$1]:-0} width=$2 left= right= pad k
+    if ((walls)); then
+        width=$((PICK_TCOLS - 1 - 4 * walls))
+        for ((k=0; k<walls; k++)); do left+="$PICK_BOX_V "; right=" $PICK_BOX_V$right"; done
+    fi
+    pick_clip "${PICK_FRAME[$1]}" "$width"
+    pick_paint_line "$1"
+    ((walls)) || return 0
+    # The ellipsis, measured as two cells for clipping, takes one like the
+    # walls.
+    pick_clip "${PICK_CLIPPED//$PICK_ELLIPSIS/.}" "$width"
+    printf -v pad '%*s' "$((width - PICK_WIDTH))" ''
+    PICK_LINE=$left$PICK_LINE$pad$right
+}
+
 pick_emit_frame() {
     # $1 = width. The whole frame goes out in a single write that returns to
     # the frame's first line, with stale tails and leftover rows erased as
@@ -282,8 +308,7 @@ pick_emit_frame() {
         # cursor in the pending-wrap state.
         cols=$((cols - 1))
         for ((i=0; i<n; i++)); do
-            pick_clip "${PICK_FRAME[i]}" "$cols"
-            pick_paint_line "$i"
+            pick_frame_line "$i" "$cols"
             out+="$PICK_LINE$PICK_EL"
             if ((i < n-1)); then out+=$'\n'; fi
         done
@@ -297,8 +322,7 @@ pick_emit_frame() {
         [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
         out=
         for ((i=0; i<n; i++)); do
-            pick_clip "${PICK_FRAME[i]}" "$cols"
-            pick_paint_line "$i"
+            pick_frame_line "$i" "$cols"
             out+="$PICK_LINE"$'\n'
         done
         [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1

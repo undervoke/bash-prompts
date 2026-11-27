@@ -181,16 +181,21 @@ pick_missing_names() {
 
 pick_row_names() {
     # $1 = row, $2 = other rows; sets PICK_DEPNAMES to the labels of the
-    # others, with the tab of those shown elsewhere.
-    local j tab IFS=' '
+    # others, with the page of those shown elsewhere: its tab, and its
+    # sub-tab after a colon.
+    local j page where IFS=' '
     PICK_DEPNAMES=
     for j in $2; do
         PICK_DEPNAMES="${PICK_DEPNAMES:+$PICK_DEPNAMES, }${PICK_LABEL[j]}"
-        ((${#PICK_TAB_GROUPS[@]})) || continue
-        pick_ref_group "$j" 1
-        tab=$PICK_REFGROUP
-        pick_ref_group "$1" 1
-        [[ $tab == "$PICK_REFGROUP" ]] || PICK_DEPNAMES="$PICK_DEPNAMES (${PICK_GLABEL[tab]})"
+        ((${#PICK_PAGES[@]})) || continue
+        pick_page_of "$j"
+        page=$PICK_PAGE_OF
+        pick_page_of "$1"
+        ((page != PICK_PAGE_OF)) || continue
+        where=${PICK_GLABEL[${PICK_PAGES[page]}]}
+        ((!PICK_TAB_SUBS[PICK_PAGE_TAB[page]])) ||
+            where="${PICK_GLABEL[${PICK_TAB_GROUPS[${PICK_PAGE_TAB[page]}]}]}: $where"
+        PICK_DEPNAMES="$PICK_DEPNAMES ($where)"
     done
 }
 
@@ -208,12 +213,12 @@ pick_edit_row() {
 }
 
 pick_tab_action() {
-    # With the focus on the tabs, Left and Right move between them, and an
-    # action on a row goes to the rows first.
+    # With the focus on the tabs or the sub-tabs, Left and Right move between
+    # them, and an action on a row goes to the rows first.
     ((PICK_ON_TABS)) || return 0
     case $PICK_KEY_ACTION in
-        prev_value) PICK_KEY_ACTION=prev_tab ;;
-        next_value) PICK_KEY_ACTION=next_tab ;;
+        prev_value) PICK_KEY_ACTION=prev_bar ;;
+        next_value) PICK_KEY_ACTION=next_bar ;;
         toggle|edit) PICK_KEY_ACTION=down ;;
         prev_group|next_group) PICK_ON_TABS=0 ;;
         submit) [[ $PICK_MODE != single ]] || PICK_KEY_ACTION=down ;;
