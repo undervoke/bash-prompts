@@ -215,7 +215,6 @@ pick_build_tabs() {
     PICK_PAGES=(); PICK_PAGE_TAB=(); PICK_PAGE_CURSOR=(); PICK_PAGE_OFFSET=()
     PICK_TAB_AT=0
     PICK_PAGE_AT=0
-    PICK_SUBBED=0
     PICK_ROOT=0
     PICK_SUBMIT_GROUP=-1
     [[ ${PICK_TABS:-0} == 1 ]] || return 0
@@ -232,7 +231,6 @@ pick_build_tabs() {
         if ((g != PICK_SUBMIT_GROUP)) && pick_group_has_subtabs "${PICK_GID[g]}"; then
             pick_child_tabs "$g" sub-tab || return 1
             PICK_TAB_SUBS[k]=${#PICK_CHILD_TABS[@]}
-            PICK_SUBBED=1
         fi
         for g in "${PICK_CHILD_TABS[@]}"; do
             PICK_PAGE_TAB[${#PICK_PAGES[@]}]=$k

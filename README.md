@@ -191,13 +191,30 @@ root groups and each keeps its focus while the prompt is open. `PICK_TAB` is the
 active tab's group ID, input and output; an ID without included rows starts at
 the first tab. Nested groups keep their headers inside a tab.
 
+The active tab is drawn as a folder tab, a box in heavy lines open at the bottom
+onto a frame around its rows, with two cells of space around each label:
+
+```text
+                   ┏━━━━━━━━┓
+   System     Keys  ┃  Apps  ┃  Submit
+┏━━━━━━━━━━━━━━━━━━━┛        ┗━━━━━━━━━━━┓
+┃ Editors                                ┃
+┃   > Notes        installed             ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+```
+
 `[` and `]` change the tab from anywhere. Up from the first row moves the focus to
 the tabs, where Left and Right change the tab, and Down returns to the rows. The
-active tab is underlined, and reversed while the tabs have the focus.
+active tab is bold, and reversed while the tabs have the focus.
 
 On a narrow terminal the active tab and the [submit tab](#submit-tab-and-confirmation)
-stay visible and `<` and `>` stand for the tabs left out. Without these styles the
-active tab is bracketed, as `[Tab]` and `[> Tab]`.
+stay visible and `<` and `>` stand for the tabs left out. The frame takes three
+rows and four columns. Outside a UTF-8 locale the frame is drawn with `+`,
+`=`, and `|`, and that of a sub-tab with `-` for its lines; a terminal that
+draws ambiguous-width characters wide misaligns them. A terminal too short for
+the frame shows the tabs as a row without it, with the active tab underlined.
+Without these styles the active tab is marked as `> Tab` while the tabs have
+the focus, or bracketed as `[Tab]` and `[> Tab]` without the frame.
 
 ### Sub-tabs
 
@@ -216,30 +233,25 @@ PICK_SUBTABS=(keys)
 PICK_TAB=desktop
 ```
 
-Where any tab has sub-tabs, the active tab is drawn as a folder tab, a box open
-at the bottom onto a frame around its contents. Sub-tabs are drawn the same way
-inside that frame, so the rows of a sub-tab sit inside two:
+Sub-tabs are drawn the same way inside the frame of their tab, in light lines
+and with one cell around each label, so the rows of a sub-tab sit inside two:
 
 ```text
-         ╭──────╮
-  System │ Keys │ Apps
-╭────────╯      ╰────────────────────────────╮
-│                  ╭─────────╮               │
-│   Shared actions │ Desktop │ Terminal      │
-│ ╭────────────────╯         ╰─────────────╮ │
-│ │ Windows                                │ │
-│ │   > Next window      Cmd+`             │ │
-│ ╰────────────────────────────────────────╯ │
-╰────────────────────────────────────────────╯
+           ┏━━━━━━━━┓
+   System  ┃  Keys  ┃  Apps
+┏━━━━━━━━━━┛        ┗━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                  ╭─────────╮               ┃
+┃   Shared actions │ Desktop │ Terminal      ┃
+┃ ╭────────────────╯         ╰─────────────╮ ┃
+┃ │ Windows                                │ ┃
+┃ │   > Next window      Cmd+`             │ ┃
+┃ ╰────────────────────────────────────────╯ ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
 `[` and `]` go through the sub-tabs of a tab in turn. Up from the first row
 reaches the sub-tabs, then the tabs; Left and Right change the row that has the
-focus, and a tab reopens at the sub-tab it showed last. The active tab and
-sub-tab are bold rather than underlined. Each frame takes four columns.
-Outside a UTF-8 locale the frames are drawn with `+`, `-`, and `|`, and a
-terminal that draws ambiguous-width characters wide misaligns them. A terminal
-too short for the frames shows the tabs and sub-tabs as two rows without them.
+focus, and a tab reopens at the sub-tab it showed last.
 
 ## Value rows
 
@@ -472,7 +484,7 @@ Each part of a prompt has one look, following the text roles of
 | Title | Bold cyan |
 | Group header | Cyan |
 | Focused row | Bold |
-| Active tab | Bold underline, or bold in a frame; reverse video while its row has the focus |
+| Active tab | Bold, or bold underline without the frame; reverse video while its row has the focus |
 | Changed value | Yellow |
 | Key that two rows share | Red |
 | Column header, note, read-only row, separator, key hint | Dim |

@@ -168,11 +168,15 @@ pick_prepare_text() {
     PICK_ARROW='->'
     PICK_BOX_H=-; PICK_BOX_V='|'
     PICK_BOX_TL=+; PICK_BOX_TR=+; PICK_BOX_BL=+; PICK_BOX_BR=+
+    PICK_HEAVY_H='='; PICK_HEAVY_V='|'
+    PICK_HEAVY_TL=+; PICK_HEAVY_TR=+; PICK_HEAVY_BL=+; PICK_HEAVY_BR=+
     case ${LC_ALL:-${LC_CTYPE:-${LANG-}}} in
         *UTF-8*|*utf-8*|*UTF8*|*utf8*)
             PICK_ELLIPSIS='…'; PICK_ARROW='→'
             PICK_BOX_H='─'; PICK_BOX_V='│'
             PICK_BOX_TL='╭'; PICK_BOX_TR='╮'; PICK_BOX_BL='╰'; PICK_BOX_BR='╯'
+            PICK_HEAVY_H='━'; PICK_HEAVY_V='┃'
+            PICK_HEAVY_TL='┏'; PICK_HEAVY_TR='┓'; PICK_HEAVY_BL='┗'; PICK_HEAVY_BR='┛'
             ;;
     esac
 }
@@ -270,12 +274,18 @@ pick_paint_line() {
 
 pick_frame_line() {
     # $1 = frame row, $2 = width; sets PICK_LINE to the row painted inside
-    # the walls of its frames. The frames span the width pick_render laid
-    # out, one column short of the terminal.
-    local walls=${PICK_FRAME_WALLS[$1]:-0} width=$2 left= right= pad k
+    # the walls of its frames: a tab's heavy, then a sub-tab's light.
+    # The frames span the width pick_render laid out, one column short of
+    # the terminal.
+    local walls=${PICK_FRAME_WALLS[$1]:-0} width=$2 left= right= pad
     if ((walls)); then
         width=$((PICK_TCOLS - 1 - 4 * walls))
-        for ((k=0; k<walls; k++)); do left+="$PICK_BOX_V "; right=" $PICK_BOX_V$right"; done
+        left="$PICK_HEAVY_V "
+        right=" $PICK_HEAVY_V"
+        if ((walls > 1)); then
+            left+="$PICK_BOX_V "
+            right=" $PICK_BOX_V$right"
+        fi
     fi
     pick_clip "${PICK_FRAME[$1]}" "$width"
     pick_paint_line "$1"

@@ -137,8 +137,8 @@
 # Back applies to every entry point but pick_run.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
-#   row, underlined active tab (bold in a frame, reversed while its row has
-#   the focus), yellow changed value and warning, dim column headers, notes, read-only rows, separators and key hint, red error and
+#   row, bold active tab (underlined without its frame, reversed while its row
+#   has the focus), yellow changed value and warning, dim column headers, notes, read-only rows, separators and key hint, red error and
 #   shared key. Nonempty NO_COLOR or TERM=dumb gives plain text; missing color
 #   capability omits colors while supported bold and dim remain.
 # Prompts draw inline at the cursor and erase themselves when they end, also
@@ -226,7 +226,6 @@ PICK_PAGE_CURSOR=()
 PICK_PAGE_OFFSET=()
 PICK_PAGE_AT=0
 PICK_PAGE_OF=0
-PICK_SUBBED=0
 PICK_CHILD_TABS=()
 PICK_BAR_LEFT=-1
 PICK_BAR_RIGHT=-1
@@ -303,6 +302,12 @@ PICK_BOX_TL=
 PICK_BOX_TR=
 PICK_BOX_BL=
 PICK_BOX_BR=
+PICK_HEAVY_H=
+PICK_HEAVY_V=
+PICK_HEAVY_TL=
+PICK_HEAVY_TR=
+PICK_HEAVY_BL=
+PICK_HEAVY_BR=
 PICK_RULE=
 PICK_WRAPPED=()
 PICK_NOTES=

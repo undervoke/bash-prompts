@@ -48,11 +48,11 @@ pick_render() {
         pick_paint "$rows" "$cols"
         return
     fi
-    # Where any tab has sub-tabs, a frame encloses the contents of the active
-    # tab, and another those of its active sub-tab, if they fit: three rows
-    # for each, and their walls take four columns.
+    # A frame encloses the contents of the active tab, and another those of
+    # its active sub-tab, if they fit: three rows for each, and their walls
+    # take four columns.
     walls=0
-    ((!${#PICK_TAB_GROUPS[@]} || !PICK_SUBBED)) || walls=$((1 + (PICK_TAB_SUBS[PICK_TAB_AT] > 0)))
+    ((!${#PICK_TAB_GROUPS[@]})) || walls=$((1 + (PICK_TAB_SUBS[PICK_TAB_AT] > 0)))
     while :; do
         inner=$((cols - 1 - 4 * walls))
         [[ $PICK_MODE != choices ]] || pick_value_column "$inner"
@@ -149,11 +149,17 @@ pick_render() {
         pick_render_row "$d"
         pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_SPANS"
     done
-    while ((PICK_WALLS)); do
-        PICK_WALLS=$((PICK_WALLS - 1))
-        pick_box_rule "$((cols - 3 - 4 * PICK_WALLS))"
+    # The frame of a sub-tab is light, that of a tab heavy.
+    if ((PICK_WALLS > 1)); then
+        PICK_WALLS=1
+        pick_box_rule "$((cols - 7))"
         pick_frame_row "$PICK_BOX_BL$PICK_RULE$PICK_BOX_BR"
-    done
+    fi
+    if ((PICK_WALLS)); then
+        PICK_WALLS=0
+        pick_box_rule "$((cols - 3))"
+        pick_frame_row "$PICK_HEAVY_BL${PICK_RULE//$PICK_BOX_H/$PICK_HEAVY_H}$PICK_HEAVY_BR"
+    fi
     ((spacer)) && pick_frame_row ''
     for ((d=0; d<msg_rows; d++)); do
         if ((d == 0)) && [[ -n $PICK_FIELD ]]; then pick_frame_row "${PICK_WRAPPED[d]}"
@@ -227,9 +233,9 @@ pick_tab_rows() {
     local cols=$1 box=$2 subs=$3 first=${PICK_TAB_FIRST[PICK_TAB_AT]} k spans= IFS=' '
     local -a sp=() pages=("${PICK_PAGES[@]:first:${PICK_TAB_SUBS[PICK_TAB_AT]}}")
     if ((box)); then
-        pick_folder_rows "$cols" "$PICK_TAB_AT" "$((PICK_ON_TABS == 1))" "${PICK_TAB_GROUPS[@]}"
+        pick_folder_rows "$cols" "$PICK_TAB_AT" "$((PICK_ON_TABS == 1))" 0 "${PICK_TAB_GROUPS[@]}"
         ((!subs)) || PICK_WALLS=1
-        ((!subs)) || pick_folder_rows "$((cols - 4))" "$((PICK_PAGE_AT - first))" "$((PICK_ON_TABS == 2))" "${pages[@]}"
+        ((!subs)) || pick_folder_rows "$((cols - 4))" "$((PICK_PAGE_AT - first))" "$((PICK_ON_TABS == 2))" 1 "${pages[@]}"
         return 0
     fi
     pick_bar_line "$cols" "$PICK_TAB_AT" "$((PICK_ON_TABS == 1))" 0 "${PICK_TAB_GROUPS[@]}"
@@ -246,11 +252,18 @@ pick_tab_rows() {
 }
 
 pick_folder_rows() {
-    # $1 = width, $2 = active tab, $3 = 1 while the bar has the focus, then
-    # the groups of the tabs. Adds the bar with the active tab as a box open
-    # at the bottom onto the frame of its contents, the shape of a folder tab.
-    local cols=$1 left right edge line pad
-    pick_bar_line "$cols" "$2" "$3" 1 "${@:4}"
+    # $1 = width, $2 = active tab, $3 = 1 while the bar has the focus, $4 = 1
+    # for sub-tabs, then the groups of the tabs. Adds the bar with the active
+    # tab as a box open at the bottom onto the frame of its contents, the
+    # shape of a folder tab. Tabs are drawn in heavy lines and sub-tabs in
+    # light ones, and tabs take two cells of space around their labels.
+    local cols=$1 left right edge line pad bar_pad=' '
+    if ((!$4)); then
+        bar_pad='  '
+        local PICK_BOX_H=$PICK_HEAVY_H PICK_BOX_V=$PICK_HEAVY_V PICK_BOX_TL=$PICK_HEAVY_TL
+        local PICK_BOX_TR=$PICK_HEAVY_TR PICK_BOX_BL=$PICK_HEAVY_BL PICK_BOX_BR=$PICK_HEAVY_BR
+    fi
+    pick_bar_line "$cols" "$2" "$3" 1 "${@:5}"
     left=$PICK_BAR_LEFT
     right=$PICK_BAR_RIGHT
     edge=$((cols - 1))
@@ -285,7 +298,8 @@ pick_bar_line() {
     # cells of the walls; every tab then has a free cell on each side, so a
     # wall moves no label. The active tab and the submit tab, which is the
     # last one, always show. The neighbors of the active one join while they
-    # fit, and < > stand for the tabs left out.
+    # fit, and < > stand for the tabs left out. Labels take bar_pad of the
+    # caller around them, or one space.
     local cols=$1 at=$2 focus=$3 box=$4 n k m first last used total grew cell=0 wall=0
     shift 4
     local -a groups=("$@") text=() cells=()
@@ -293,9 +307,9 @@ pick_bar_line() {
     total=0
     for ((k=0; k<n; k++)); do
         pick_group_title "${groups[k]}"
-        text[k]=" $PICK_TITLE "
+        text[k]="${bar_pad:- }$PICK_TITLE${bar_pad:- }"
         if ((k != at)); then :
-        elif ((box)); then ((!focus)) || [[ -n $PICK_STYLE_TAB ]] || text[k]="> $PICK_TITLE "
+        elif ((box)); then ((!focus)) || [[ -n $PICK_STYLE_TAB ]] || text[k]="${bar_pad#?}> $PICK_TITLE$bar_pad"
         elif ((focus)); then [[ -n $PICK_STYLE_TAB ]] || text[k]="[> $PICK_TITLE]"
         elif [[ -z $PICK_STYLE_ACTIVE ]]; then text[k]="[$PICK_TITLE]"; fi
         pick_clip "${text[k]}" 9999
