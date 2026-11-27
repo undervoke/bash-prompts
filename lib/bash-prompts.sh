@@ -31,7 +31,8 @@
 #     PICK_TABS: the child groups of each root group, under its label. The
 #     rows of the active one show in a panel beside the column, titled with
 #     its label. PICK_TAB names it. PICK_SUBMIT_TAB shows as the last item of
-#     the column, without a panel, and submits on Toggle or Edit. Otherwise
+#     the column, without a panel even while focused, and submits on Toggle
+#     or Edit. Otherwise
 #     the IDs of tabs and sub-tabs whose page is such a column, of the child
 #     groups of their child groups, without a submit item.
 #   PICK_LEFTTABS_FRAME 1 also frames the column and the panel of PICK_LEFTTABS

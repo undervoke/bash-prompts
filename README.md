@@ -263,8 +263,9 @@ the sub-tabs, and the sub-tabs for the tabs.
 the active tab show in a panel beside the column, titled with its label, and
 the active tab is a box open toward the panel. `PICK_TAB` names the active tab,
 input and output. The [submit tab](#submit-tab-and-confirmation) is the last
-item of the column, without a panel or a box: Toggle or Edit on it submits,
-through the confirmation if there is one. Blank lines set the groups of the
+item of the column, without a panel or a box, and while it has the focus the
+column shows alone: Toggle or Edit on it submits, through the confirmation if
+there is one. Blank lines set the groups of the
 column apart by the same rule as rows. `PICK_LEFTTABS_FRAME=1` also frames the
 column and the panel, with `PICK_PROMPT` on the top border.
 

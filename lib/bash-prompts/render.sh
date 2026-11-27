@@ -45,7 +45,7 @@ pick_render() {
     # nothing so no further frame is composed for a dead screen.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
     local rows cols h d total drow start end title counter avail show_tabs show_subs framed walls inner show_title show_columns tab_spacer msg_rows msg_style msg_spacer hint_rows spacer pinned g
-    local left=0 side=0 outer=0 show_lefts top n
+    local left=0 side=0 outer=0 show_lefts top n bare=$PICK_SIDE_SUBMIT
     pick_term_size
     rows=$PICK_TROWS
     cols=$PICK_TCOLS
@@ -145,7 +145,7 @@ pick_render() {
     elif [[ $PICK_MODE == single ]]; then title='Choose one item'
     else title='Select items'; fi
     counter=
-    ((total <= h)) || counter="  ($((PICK_CURSOR + 1))/${#PICK_FOCUS[@]})"
+    ((bare || total <= h)) || counter="  ($((PICK_CURSOR + 1))/${#PICK_FOCUS[@]})"
     # Shorten the prompt rather than the position it is followed by.
     pick_clip "$title" "$((cols - 1 - ${#counter} - 6 * outer))"
     if ((outer)); then
@@ -163,31 +163,35 @@ pick_render() {
     ((tab_spacer)) && pick_frame_row ''
     top=${#PICK_FRAME[@]}
     ((!side)) || pick_frame_row ''
-    if ((show_columns)); then
-        pick_column_line
-        pick_frame_row "$PICK_ROW" "$PICK_STYLE_MUTED"
+    # The submit item of left tabs has no page, so it shows no rows, and the
+    # layout keeps the room they had.
+    if ((!bare)); then
+        if ((show_columns)); then
+            pick_column_line
+            pick_frame_row "$PICK_ROW" "$PICK_STYLE_MUTED"
+        fi
+        start=$PICK_OFFSET
+        end=$((start + h))
+        for g in "${PICK_STICKY[@]}"; do
+            pick_header_line "$g"
+            pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE"
+            end=$((end - 1))
+        done
+        # Automatic spacing at the top separates nothing. Trailing headers
+        # introduce no visible items; explicit separators remain visible.
+        if [[ ${PICK_DKIND[start]-} == blank ]]; then
+            start=$((start + 1))
+            end=$((end + 1))
+        fi
+        ((end > total)) && end=$total
+        while ((end - 1 > drow)) && [[ ${PICK_DKIND[end - 1]} == blank || ${PICK_DKIND[end - 1]} == header ]]; do
+            end=$((end - 1))
+        done
+        for ((d=start; d<end; d++)); do
+            pick_render_row "$d"
+            pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_SPANS"
+        done
     fi
-    start=$PICK_OFFSET
-    end=$((start + h))
-    for g in "${PICK_STICKY[@]}"; do
-        pick_header_line "$g"
-        pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE"
-        end=$((end - 1))
-    done
-    # Automatic spacing at the top separates nothing. Trailing headers
-    # introduce no visible items; explicit separators remain visible.
-    if [[ ${PICK_DKIND[start]-} == blank ]]; then
-        start=$((start + 1))
-        end=$((end + 1))
-    fi
-    ((end > total)) && end=$total
-    while ((end - 1 > drow)) && [[ ${PICK_DKIND[end - 1]} == blank || ${PICK_DKIND[end - 1]} == header ]]; do
-        end=$((end - 1))
-    done
-    for ((d=start; d<end; d++)); do
-        pick_render_row "$d"
-        pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_SPANS"
-    done
     if ((side)); then
         # The left column may be longer than the rows beside it.
         n=$((${#PICK_FRAME[@]} - top - 1))
@@ -405,7 +409,7 @@ pick_side_list() {
             pick_side_apart "$head"
             pick_side_line header "$head"
         fi
-        if ((p != PICK_PAGE_AT)); then pick_side_line tab "$g"; continue; fi
+        if ((p != PICK_PAGE_AT || PICK_SIDE_SUBMIT)); then pick_side_line tab "$g"; continue; fi
         PICK_SIDE_AT=${#PICK_SIDE_KIND[@]}
         pick_side_line top 0
         pick_side_line active "$g"
@@ -413,6 +417,7 @@ pick_side_list() {
     done
     if ((PICK_SIDE_LEVEL == 1 && PICK_SUBMIT_GROUP >= 0)); then
         pick_side_apart "$PICK_SUBMIT_GROUP"
+        ((!PICK_SIDE_SUBMIT)) || PICK_SIDE_AT=${#PICK_SIDE_KIND[@]}
         pick_side_line submit "$PICK_SUBMIT_GROUP"
     fi
     ((cells <= max)) || cells=$max
@@ -450,8 +455,9 @@ pick_side_cell() {
     # $1 = line of the left column; sets PICK_TEXT to it painted across the
     # column, the panel's wall, and the space after. The box of the active
     # tab replaces the wall where it opens onto the panel; past the last
-    # line the column is blank.
+    # line the column is blank. The submit item has no panel to wall off.
     local kind=${PICK_SIDE_KIND[$1]-} cells=$PICK_SIDE_CELLS indent=4 role=PLAIN wall=$PICK_BOX_V lead label seg
+    ((!PICK_SIDE_SUBMIT)) || wall=' '
     case $kind in
         top|bottom)
             pick_box_rule "$((cells - 1))"
@@ -486,24 +492,29 @@ pick_side_rows() {
     # $3 = their width, $4 = 1 inside the outer frame. Puts the left column,
     # the panel's walls and borders, and the outer frame's walls around
     # those rows, within the walls of any tab frames. The column scrolls to
-    # show the box of the active tab.
-    local top=$1 n=$2 width=$3 r d off=0 edge= wall= blank
+    # show the box of the active tab. The submit item has no panel, so its
+    # borders and walls give way to blanks.
+    local top=$1 n=$2 width=$3 r d off=0 edge= wall= blank side=$PICK_BOX_V span=3 cap
     if (($4)); then edge="$PICK_BOX_V "; wall=" $PICK_BOX_V"; fi
-    ((PICK_SIDE_AT + 3 <= n)) || off=$((PICK_SIDE_AT + 3 - n))
+    if ((PICK_SIDE_SUBMIT)); then side=' '; span=1; fi
+    ((PICK_SIDE_AT + span <= n)) || off=$((PICK_SIDE_AT + span - n))
     printf -v blank '%*s' "$PICK_SIDE_CELLS" ''
+    printf -v cap '%*s' "$((width + 4))" ''
     pick_side_cap "${PICK_GLABEL[PICK_ROOT]}" "$((width + 4))" PLAIN
-    PICK_FRAME_LEFT[top]+=$edge$blank$PICK_TEXT$wall
+    ((PICK_SIDE_SUBMIT)) || cap=$PICK_TEXT
+    PICK_FRAME_LEFT[top]+=$edge$blank$cap$wall
     PICK_FRAME_WIDTH[top]=0
     for ((r=0; r<n; r++)); do
         d=$((top + 1 + r))
         pick_side_cell "$((off + r))"
         PICK_FRAME_LEFT[d]+=$edge$PICK_TEXT
         PICK_FRAME_WIDTH[d]=$width
-        PICK_FRAME_RIGHT[d]=" $PICK_BOX_V$wall${PICK_FRAME_RIGHT[d]}"
+        PICK_FRAME_RIGHT[d]=" $side$wall${PICK_FRAME_RIGHT[d]}"
     done
     d=$((top + n + 1))
     pick_box_rule "$((width + 2))"
-    PICK_FRAME_LEFT[d]+=$edge$blank$PICK_BOX_BL$PICK_RULE$PICK_BOX_BR$wall
+    ((PICK_SIDE_SUBMIT)) || cap=$PICK_BOX_BL$PICK_RULE$PICK_BOX_BR
+    PICK_FRAME_LEFT[d]+=$edge$blank$cap$wall
     PICK_FRAME_WIDTH[d]=0
 }
 
