@@ -185,9 +185,9 @@ pick_missing_names() {
 
 pick_row_names() {
     # $1 = row, $2 = other rows; sets PICK_DEPNAMES to the labels of the
-    # others, with the page of those shown elsewhere: its tab, and its
-    # sub-tab after a colon.
-    local j page where IFS=' '
+    # others, with the page of those shown elsewhere: its tab, then its
+    # sub-tab and its left tab after colons.
+    local j page side where IFS=' '
     PICK_DEPNAMES=
     for j in $2; do
         PICK_DEPNAMES="${PICK_DEPNAMES:+$PICK_DEPNAMES, }${PICK_LABEL[j]}"
@@ -197,7 +197,9 @@ pick_row_names() {
         pick_page_of "$1"
         ((page != PICK_PAGE_OF)) || continue
         where=${PICK_GLABEL[${PICK_PAGES[page]}]}
-        ((!PICK_TAB_SUBS[PICK_PAGE_TAB[page]])) ||
+        side=${PICK_PAGE_SIDE[page]}
+        ((!side || !PICK_TAB_SUBS[PICK_PAGE_TAB[page]])) || where="${PICK_GLABEL[side]}: $where"
+        ((!side && !PICK_TAB_SUBS[PICK_PAGE_TAB[page]])) ||
             where="${PICK_GLABEL[${PICK_TAB_GROUPS[${PICK_PAGE_TAB[page]}]}]}: $where"
         PICK_DEPNAMES="$PICK_DEPNAMES ($where)"
     done
@@ -222,16 +224,17 @@ pick_tab_action() {
     # rows for the sub-tabs, if any, and the sub-tabs for the tabs, whatever
     # it is bound to. The column of left tabs moves with Up and Down instead,
     # and Right opens its tab; Left leaves the rows for it, so values there
-    # turn only one way. Its submit item submits on Toggle and Edit.
+    # turn only one way, and Esc leaves the column for the bars above. Its
+    # submit item submits on Toggle and Edit.
     if [[ $PICK_PRESSED == Esc ]] && ((${#PICK_TAB_GROUPS[@]} && PICK_ON_TABS != 1)); then
         PICK_KEY_ACTION=leave
         return 0
     fi
     if ((!PICK_ON_TABS)); then
-        [[ $PICK_KEY_ACTION != prev_value ]] || ! pick_left_tabs || PICK_KEY_ACTION=leave
+        [[ $PICK_KEY_ACTION != prev_value ]] || ((!PICK_SIDE_LEVEL)) || PICK_KEY_ACTION=leave
         return 0
     fi
-    if pick_left_tabs; then
+    if ((PICK_SIDE_LEVEL && PICK_ON_TABS == PICK_SIDE_LEVEL)); then
         case $PICK_KEY_ACTION in
             up) PICK_KEY_ACTION=side_prev ;;
             down) PICK_KEY_ACTION=side_next ;;

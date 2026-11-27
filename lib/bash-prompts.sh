@@ -24,15 +24,18 @@
 #   PICK_PROMPT     one line shown above the list; unset uses a generic title.
 #   PICK_TABS       1 shows the root groups as tabs below the prompt.
 #   PICK_TAB        active tab's group ID: input/output; an unknown or unset
-#     ID starts at the first tab. On a tab with sub-tabs, the active sub-tab's.
+#     ID starts at the first tab. On a tab with sub-tabs, the active sub-tab's,
+#     and on a column of left tabs, the active left tab's.
 #   PICK_SUBTABS    root group IDs whose child groups show as sub-tabs.
 #   PICK_LEFTTABS   1 shows tabs in a column left of their rows, in place of
 #     PICK_TABS: the child groups of each root group, under its label. The
 #     rows of the active one show in a panel beside the column, titled with
 #     its label. PICK_TAB names it. PICK_SUBMIT_TAB shows as the last item of
-#     the column, without a panel, and submits on Toggle or Edit.
-#   PICK_LEFTTABS_FRAME 1 also frames the column and the panel, with
-#     PICK_PROMPT on the top border.
+#     the column, without a panel, and submits on Toggle or Edit. Otherwise
+#     the IDs of tabs and sub-tabs whose page is such a column, of the child
+#     groups of their child groups, without a submit item.
+#   PICK_LEFTTABS_FRAME 1 also frames the column and the panel of PICK_LEFTTABS
+#     at 1, with PICK_PROMPT on the top border.
 # Value rows (pick_choices) additionally use:
 #   PICK_VALUES[i]  comma-separated values; a row always holds one of them.
 #   PICK_CURRENT[i] value the row starts from; unset uses the first value.
@@ -153,9 +156,10 @@
 # rows for the sub-tabs or tabs, and the sub-tabs for the tabs. Prev value and
 # Esc leave the rows for the column of left tabs, so values there turn one
 # way only; in the column Up/Down move between tabs, and next value, Toggle,
-# and Edit open the focused one. All and Clear bindings apply only to
-# multiselect and dependencies; tab bindings only with PICK_TABS or
-# PICK_LEFTTABS.
+# and Edit open the focused one. Inside a tab or sub-tab, Esc and Up from its
+# first tab leave the column for the bars, and prev/next tab move past it.
+# All and Clear bindings apply only to multiselect and dependencies; tab
+# bindings only with PICK_TABS or PICK_LEFTTABS.
 # Back applies to every entry point but pick_run.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
@@ -182,7 +186,7 @@ PICK_GROUP_TAIL=()
 PICK_TABS=0
 PICK_TAB=
 PICK_SUBTABS=()
-PICK_LEFTTABS=0
+PICK_LEFTTABS=()
 PICK_LEFTTABS_FRAME=0
 PICK_SUBMIT_TAB=
 PICK_CONFIRM_PROMPT=
@@ -249,6 +253,7 @@ PICK_TAB_PAGE=()
 PICK_TAB_AT=0
 PICK_PAGES=()
 PICK_PAGE_TAB=()
+PICK_PAGE_SIDE=()
 PICK_PAGE_CURSOR=()
 PICK_PAGE_OFFSET=()
 PICK_PAGE_AT=0
@@ -259,6 +264,13 @@ PICK_SIDE_REF=()
 PICK_SIDE_AT=0
 PICK_SIDE_CELLS=0
 PICK_SIDE_SUBMIT=0
+PICK_SIDE_LEVEL=0
+PICK_SIDE_FIRST=0
+PICK_SIDE_LAST=0
+PICK_SIDE_PAGE=()
+PICK_UNIT_GROUPS=()
+PICK_UNIT_PAGES=()
+PICK_UNIT_AT=0
 PICK_BAR_LEFT=-1
 PICK_BAR_RIGHT=-1
 PICK_SUBMIT_GROUP=-1

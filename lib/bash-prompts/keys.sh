@@ -44,7 +44,7 @@ pick_hint() {
         verbs[${#verbs[@]}]=tabs
         help[${#help[@]}]=Esc
         # Prev value leaves for the column of left tabs too.
-        if pick_left_tabs && [[ ${help[6]} != off ]]; then
+        if ((PICK_SIDE_LEVEL && !PICK_ON_TABS)) && [[ ${help[6]} != off ]]; then
             help[${#help[@]} - 1]="${help[6]}/Esc"
             verbs[6]=-
             [[ ${verbs[7]} == - ]] || verbs[7]=$turn
@@ -56,8 +56,8 @@ pick_hint() {
         [[ $PICK_MODE != single ]] || verbs[12]=-
         # The left column goes up and down, and opens its tab to the right;
         # its submit item submits instead.
-        if pick_left_tabs; then move=tab; verbs[6]=-; verbs[7]=open; fi
-        if pick_left_tabs && ((PICK_SIDE_SUBMIT)); then
+        if ((PICK_SIDE_LEVEL && PICK_ON_TABS == PICK_SIDE_LEVEL)); then move=tab; verbs[6]=-; verbs[7]=open; fi
+        if ((PICK_SIDE_LEVEL && PICK_ON_TABS == PICK_SIDE_LEVEL && PICK_SIDE_SUBMIT)); then
             verbs[7]=-
             verbs[8]=submit
             if [[ ${help[9]} != off ]]; then
@@ -209,7 +209,7 @@ pick_prepare_keys() {
     PICK_KEY_HELP=()
     pick_bind_keys up "${PICK_KEYS_UP[@]}" || return 1
     pick_bind_keys down "${PICK_KEYS_DOWN[@]}" || return 1
-    if [[ ${PICK_TABS:-0} == 1 || ${PICK_LEFTTABS:-0} == 1 ]]; then
+    if [[ ${PICK_TABS:-0} == 1 ]] || pick_left_root; then
         pick_bind_keys prev_tab "${PICK_KEYS_PREV_TAB[@]}" || return 1
         pick_bind_keys next_tab "${PICK_KEYS_NEXT_TAB[@]}" || return 1
     else
@@ -218,7 +218,7 @@ pick_prepare_keys() {
     fi
     pick_bind_keys prev_group "${PICK_KEYS_PREV_GROUP[@]}" || return 1
     pick_bind_keys next_group "${PICK_KEYS_NEXT_GROUP[@]}" || return 1
-    if [[ $PICK_MODE == choices && $PICK_ALONE == 0 || ${PICK_TABS:-0} == 1 || ${PICK_LEFTTABS:-0} == 1 ]]; then
+    if [[ $PICK_MODE == choices && $PICK_ALONE == 0 || ${PICK_TABS:-0} == 1 ]] || pick_left_root; then
         pick_bind_keys prev_value "${PICK_KEYS_PREV_VALUE[@]}" || return 1
         pick_bind_keys next_value "${PICK_KEYS_NEXT_VALUE[@]}" || return 1
     else

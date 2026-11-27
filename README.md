@@ -317,6 +317,57 @@ new one. `PICK_ON_CHANGE` sets every application that is not locked to the
 unified value, and `PICK_LABEL_STYLE` paints Unified bold, an application that
 differs from it and its Unified yellow, and the locked Chrome red.
 
+#### Left tabs in a tab or sub-tab
+
+`PICK_LEFTTABS` may instead list IDs of tabs and sub-tabs whose page is such a
+column, beside tabs and sub-tabs that keep their usual layout: the child groups
+of the page head the column, their child groups are its tabs, and deeper groups
+keep their headers in the panel. The column and the panel stand inside the
+frames of the tab and sub-tab, so `PICK_LEFTTABS_FRAME` does not apply, and the
+submit tab stays among the tabs. `PICK_TAB` may name the page, which opens at
+its first left tab, or a left tab, and on output names the active left tab.
+`PICK_GROUP_COLUMNS` gives the rows of a page column headers of their own.
+
+```bash
+PICK_TABS=1
+pick_group keys 'Keybindings'
+pick_group macos 'macOS' keys
+pick_group shared 'Shared actions' keys
+PICK_GROUP_COLUMNS[${#PICK_GROUP_ID[@]} - 1]=$'\tDefault key\tKeybinding'
+PICK_SUBTABS=(keys)
+PICK_LEFTTABS=(shared)
+PICK_COLUMNS=('Action' 'Default' 'Key')
+```
+
+```text
+            ┏━━━━━━━━━━━━━━━┓
+   General  ┃  Keybindings  ┃  Submit
+┏━━━━━━━━━━━┛               ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃         ╭────────────────╮                                              ┃
+┃   macOS │ Shared actions │                                              ┃
+┃ ╭───────╯                ╰────────────────────────────────────────────╮ ┃
+┃ │                       ╭─ New tab ─────────────────────────────────╮ │ ┃
+┃ │   Tabs & windows      │              Default key  Keybinding      │ │ ┃
+┃ │ ╭─────────────────────╯ > Unified                 default         │ │ ┃
+┃ │ │   New tab                                                       │ │ ┃
+┃ │ ╰─────────────────────╮ Applications                              │ │ ┃
+┃ │     Close tab         │     VS Code  ⌘T           default         │ │ ┃
+┃ │                       │     iTerm2   ⌘T           default         │ │ ┃
+┃ │   Find & commands     │     Chrome   ⌘T           default  locked │ │ ┃
+┃ │     Find              │                                           │ │ ┃
+┃ │     Command palette   │                                           │ │ ┃
+┃ │                       ╰───────────────────────────────────────────╯ │ ┃
+┃ ╰─────────────────────────────────────────────────────────────────────╯ ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+```
+
+Down from the sub-tabs reaches the column, and Esc or Up from its first tab
+returns to them; Down from its last tab wraps to the tabs. Left or Esc leaves
+the rows for the column, as above. `[` and `]` move past the column to the next
+sub-tab or tab, and the page reopens at the left tab it showed last. Without
+room for the column its tabs share a row inside the frames, and without room
+for the frames a row below the sub-tabs.
+
 ## Value rows
 
 `pick_choices` gives each row a list of values and no checkbox: the row always
@@ -701,6 +752,7 @@ Use a name to run an example directly and return its exit status:
 ./demo choices
 ./demo subtabs
 ./demo lefttabs
+./demo embedded
 ./demo keybinding
 ./demo keys
 ./demo nested
@@ -721,7 +773,8 @@ with rows that turn off with what they require, a submit tab, and a confirmation
 whose sub-tabs share that frame, with headers inside a sub-tab; `lefttabs` shows
 tabs in a left column with a submit item, where a unified key sets the key of
 every application that is not locked, labels warn where they differ, and a
-locked one is red; `keybinding` shows a key per row
+locked one is red; `embedded` shows such a column inside a sub-tab, beside an
+ordinary sub-tab and tabs, with column headers of its own; `keybinding` shows a key per row
 in columns, with a check, and a key on its own. `nested` demonstrates four levels,
 parent counts, tail ordering, separators inside and between groups, and
 Left/Right group jumps at depth 2; `separators` demonstrates dividers in a
