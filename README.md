@@ -410,6 +410,7 @@ mixes with other rows and shares their tabs, prerequisites, and result.
 | `PICK_ON_CHANGE` | Function run as `function <row index>` after a row takes a value by Toggle, Prev/next value, or Edit, and once as `function` before the first draw, with `PICK_RESULT` settled. It may set `PICK_CHOICE` of any row and `PICK_LABEL_STYLE`; the rows then settle again and every row shows again. A choice it sets on an edit row is kept among that row's values as if entered; on another row it must be one of its `PICK_VALUES`. Its own changes do not run it again, and the message names the rows they change. Like `PICK_EDIT`, it must not print, read standard input, or start another prompt. |
 | `PICK_CELLS` | Tab-separated text for the columns between the label and the value. |
 | `PICK_COLUMNS` | Headers of the label, each cell, and the value, in order. Omitted ones are blank. |
+| `PICK_GROUP_COLUMNS` | Tab-separated headers in place of `PICK_COLUMNS` on the pages inside the group at the same index of `PICK_GROUP_ID`; the nearest such group applies. |
 
 `PICK_CURRENT` and `PICK_CHOICE` of an edit row may be any text. Toggle and
 Prev/next value move it through its fixed values, the texts it started from, and

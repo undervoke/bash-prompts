@@ -404,16 +404,29 @@ pick_measure_values() {
             ((PICK_WIDTH <= PICK_VALUE_CELLS)) || PICK_VALUE_CELLS=$PICK_WIDTH
         done
     done
-    if ((${#PICK_COLUMNS[@]} == 0)); then PICK_HEADED=0; fi
+    pick_page_columns
+    if ((${#PICK_HEADS[@]} == 0)); then PICK_HEADED=0; fi
     ((PICK_HEADED)) || return 0
-    pick_clip "${PICK_COLUMNS[0]-}" 9999
+    pick_clip "${PICK_HEADS[0]-}" 9999
     ((PICK_WIDTH + 2 <= PICK_LABEL_CELLS)) || PICK_LABEL_CELLS=$((PICK_WIDTH + 2))
     for k in "${!PICK_CELL_CELLS[@]}"; do
-        pick_clip "${PICK_COLUMNS[k + 1]-}" 9999
+        pick_clip "${PICK_HEADS[k + 1]-}" 9999
         ((PICK_WIDTH <= PICK_CELL_CELLS[k])) || PICK_CELL_CELLS[k]=$PICK_WIDTH
     done
-    pick_clip "${PICK_COLUMNS[PICK_CELL_COUNT + 1]-}" 9999
+    pick_clip "${PICK_HEADS[PICK_CELL_COUNT + 1]-}" 9999
     ((PICK_WIDTH <= PICK_VALUE_CELLS)) || PICK_VALUE_CELLS=$PICK_WIDTH
+}
+
+pick_page_columns() {
+    # Sets PICK_HEADS to the column headers of the page: the PICK_GROUP_COLUMNS
+    # of its group, or of the nearest group above it that has them, or else
+    # PICK_COLUMNS.
+    local g=$PICK_ROOT
+    while ((g > 0)) && [[ -z ${PICK_GROUP_COLUMNS[g - 1]+set} ]]; do g=${PICK_GPARENT[g]}; done
+    PICK_HEADS=("${PICK_COLUMNS[@]}")
+    ((g > 0)) || return 0
+    pick_split_cells "${PICK_GROUP_COLUMNS[g - 1]}"
+    PICK_HEADS=("${PICK_SPLIT_CELLS[@]}")
 }
 
 pick_value_column() {
@@ -478,11 +491,11 @@ pick_fit_cells() {
 
 pick_column_line() {
     # Sets PICK_ROW to the column headers.
-    pick_fit "${PICK_COLUMNS[0]-}" "$((PICK_VALUE_COLUMN - 2))"
+    pick_fit "${PICK_HEADS[0]-}" "$((PICK_VALUE_COLUMN - 2))"
     PICK_ROW="  $PICK_FITTED"
-    PICK_SPLIT_CELLS=("${PICK_COLUMNS[@]:1:PICK_CELL_COUNT}")
+    PICK_SPLIT_CELLS=("${PICK_HEADS[@]:1:PICK_CELL_COUNT}")
     pick_fit_cells
-    PICK_ROW+=$PICK_FITTED_CELLS${PICK_COLUMNS[PICK_CELL_COUNT + 1]-}
+    PICK_ROW+=$PICK_FITTED_CELLS${PICK_HEADS[PICK_CELL_COUNT + 1]-}
 }
 
 pick_value_line() {

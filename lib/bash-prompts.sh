@@ -69,6 +69,8 @@
 #     row that keeps its value is then listed too.
 #   PICK_CELLS[i]   tab-separated columns between the label and the value.
 #   PICK_COLUMNS    headers of the label, the cells, and the value.
+#   PICK_GROUP_COLUMNS[k] tab-separated headers in place of PICK_COLUMNS on the
+#     pages inside the group PICK_GROUP_ID[k]; the nearest such group applies.
 # Keys (pick_keybinding, and rows edited by it) additionally use:
 #   PICK_KEYBINDING_DEFAULT[i] key of a row at a fixed value that is not off.
 #   PICK_KEYBINDING_SCOPE[i] rows compete for a key within the same scope.
@@ -206,6 +208,8 @@ PICK_EDIT=()
 PICK_FORMAT=()
 PICK_LABEL_STYLE=()
 PICK_COLUMNS=()
+PICK_GROUP_COLUMNS=()
+PICK_HEADS=()
 PICK_CELLS=()
 PICK_KEYBINDING_DEFAULT=()
 PICK_KEYBINDING_SCOPE=()
