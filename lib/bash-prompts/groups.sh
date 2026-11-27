@@ -205,19 +205,27 @@ pick_child_tabs() {
     return 0
 }
 
+pick_left_tabs() {
+    # Whether the tabs stand in a column left of their rows.
+    [[ ${PICK_LEFTTABS:-0} == 1 ]] && ((${#PICK_TAB_GROUPS[@]}))
+}
+
 pick_build_tabs() {
     # With PICK_TABS, the root groups become tabs in their display order, and
     # with PICK_SUBTABS the child groups of a tab become its sub-tabs. The
     # rows of one page are shown at a time: a tab without sub-tabs, or a
-    # sub-tab. Pages follow the order of the tabs, sub-tabs in turn.
-    local g k p
+    # sub-tab. Pages follow the order of the tabs, sub-tabs in turn. With
+    # PICK_LEFTTABS every root group holds sub-tabs, which are the tabs of the
+    # left column, and the root groups head them there.
+    local g k p left=0 what=sub-tab
     PICK_TAB_GROUPS=(); PICK_TAB_FIRST=(); PICK_TAB_SUBS=(); PICK_TAB_PAGE=()
     PICK_PAGES=(); PICK_PAGE_TAB=(); PICK_PAGE_CURSOR=(); PICK_PAGE_OFFSET=()
     PICK_TAB_AT=0
     PICK_PAGE_AT=0
     PICK_ROOT=0
     PICK_SUBMIT_GROUP=-1
-    [[ ${PICK_TABS:-0} == 1 ]] || return 0
+    if [[ ${PICK_LEFTTABS:-0} == 1 ]]; then left=1; what='left tab'
+    elif [[ ${PICK_TABS:-0} != 1 ]]; then return 0; fi
     pick_child_tabs 0 tab || return 1
     PICK_TAB_GROUPS=("${PICK_CHILD_TABS[@]}")
     ((${#PICK_TAB_GROUPS[@]})) || return 0
@@ -228,8 +236,8 @@ pick_build_tabs() {
         PICK_TAB_PAGE[k]=${#PICK_PAGES[@]}
         PICK_TAB_SUBS[k]=0
         PICK_CHILD_TABS=("$g")
-        if ((g != PICK_SUBMIT_GROUP)) && pick_group_has_subtabs "${PICK_GID[g]}"; then
-            pick_child_tabs "$g" sub-tab || return 1
+        if ((g != PICK_SUBMIT_GROUP)) && { ((left)) || pick_group_has_subtabs "${PICK_GID[g]}"; }; then
+            pick_child_tabs "$g" "$what" || return 1
             PICK_TAB_SUBS[k]=${#PICK_CHILD_TABS[@]}
         fi
         for g in "${PICK_CHILD_TABS[@]}"; do
@@ -257,7 +265,8 @@ pick_build_tabs() {
 
 pick_build_submit_tab() {
     # The group in PICK_SUBMIT_TAB becomes the last tab. Its two actions take
-    # the indices after the items, so they are never values of a row.
+    # the indices after the items, so they are never values of a row. Left
+    # tabs show it as an item that submits, without a page of its own.
     local g i n=${#PICK_LABEL[@]}
     [[ $PICK_MODE == choices && -n ${PICK_SUBMIT_TAB-} ]] || return 0
     pick_group_index "$PICK_SUBMIT_TAB" 1
@@ -269,7 +278,7 @@ pick_build_submit_tab() {
     PICK_SUBMIT_GROUP=$g
     PICK_GCHILDREN[g]=
     for ((i=n; i<n+2; i++)); do PICK_IGROUP[i]=$g; done
-    PICK_TAB_GROUPS[${#PICK_TAB_GROUPS[@]}]=$g
+    [[ ${PICK_LEFTTABS:-0} == 1 ]] || PICK_TAB_GROUPS[${#PICK_TAB_GROUPS[@]}]=$g
 }
 
 pick_on_submit_page() {
@@ -296,6 +305,7 @@ pick_show_page() {
     PICK_TAB_PAGE[PICK_TAB_AT]=$1
     PICK_ROOT=${PICK_PAGES[$1]}
     PICK_TAB=${PICK_GID[PICK_ROOT]}
+    PICK_SIDE_SUBMIT=0
     pick_build_rows
     PICK_CURSOR=${PICK_PAGE_CURSOR[$1]:-0}
     PICK_OFFSET=${PICK_PAGE_OFFSET[$1]:-0}
@@ -306,6 +316,16 @@ pick_switch_page() {
     # $1 = pages to move by, -1 for the previous one.
     local n=${#PICK_PAGES[@]}
     pick_show_page "$(((PICK_PAGE_AT + $1 + n) % n))"
+}
+
+pick_side_move() {
+    # $1 = -1 to move up the column of left tabs, 1 down. Its submit item
+    # comes after the last tab; leaving it shows the tab it is left for.
+    local last=$((${#PICK_PAGES[@]} - 1))
+    if ((PICK_SIDE_SUBMIT)); then
+        if (($1 > 0)); then pick_show_page 0; else pick_show_page "$last"; fi
+    elif ((PICK_SUBMIT_GROUP >= 0 && PICK_PAGE_AT == ($1 > 0 ? last : 0))); then PICK_SIDE_SUBMIT=1
+    else pick_switch_page "$1"; fi
 }
 
 pick_switch_tab() {

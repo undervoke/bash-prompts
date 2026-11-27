@@ -190,7 +190,7 @@ pick_keybinding() {
 
 pick_keybinding_alone() {
     # One edit row of its own; the caller's rows and groups stay untouched.
-    local PICK_MODE=choices PICK_ALONE=1 PICK_EDIT_FIRST=0 PICK_TABS=0 PICK_TAB= PICK_CONFIRM_PROMPT= PICK_ON_CHANGE= rc=0
+    local PICK_MODE=choices PICK_ALONE=1 PICK_EDIT_FIRST=0 PICK_TABS=0 PICK_LEFTTABS=0 PICK_TAB= PICK_CONFIRM_PROMPT= PICK_ON_CHANGE= rc=0
     local PICK_PROMPT=${PICK_PROMPT:-Choose a key}
     local -a PICK_ID=(key) PICK_LABEL=(Key) PICK_EDIT=(pick_keybinding)
     local -a PICK_NOTE=() PICK_GROUP=() PICK_GROUP_ID=() PICK_GROUP_LABEL=() PICK_GROUP_PARENT=() PICK_GROUP_TAIL=()

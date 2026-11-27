@@ -217,12 +217,37 @@ pick_tab_action() {
     # With the focus on the tabs or the sub-tabs, Left and Right move between
     # them, and an action on a row goes to the rows first. Esc leaves the
     # rows for the sub-tabs, if any, and the sub-tabs for the tabs, whatever
-    # it is bound to.
+    # it is bound to. The column of left tabs moves with Up and Down instead,
+    # and Right opens its tab; Left leaves the rows for it, so values there
+    # turn only one way. Its submit item submits on Toggle and Edit.
     if [[ $PICK_PRESSED == Esc ]] && ((${#PICK_TAB_GROUPS[@]} && PICK_ON_TABS != 1)); then
         PICK_KEY_ACTION=leave
         return 0
     fi
-    ((PICK_ON_TABS)) || return 0
+    if ((!PICK_ON_TABS)); then
+        [[ $PICK_KEY_ACTION != prev_value ]] || ! pick_left_tabs || PICK_KEY_ACTION=leave
+        return 0
+    fi
+    if pick_left_tabs; then
+        case $PICK_KEY_ACTION in
+            up) PICK_KEY_ACTION=side_prev ;;
+            down) PICK_KEY_ACTION=side_next ;;
+        esac
+        if ((PICK_SIDE_SUBMIT)); then
+            case $PICK_KEY_ACTION in
+                toggle|edit) PICK_KEY_ACTION=submit ;;
+                prev_value|next_value|prev_group|next_group) PICK_KEY_ACTION= ;;
+            esac
+            return 0
+        fi
+        case $PICK_KEY_ACTION in
+            prev_value) PICK_KEY_ACTION= ;;
+            next_value|toggle|edit) PICK_KEY_ACTION=open ;;
+            prev_group|next_group) PICK_ON_TABS=0 ;;
+            submit) [[ $PICK_MODE != single ]] || PICK_KEY_ACTION=open ;;
+        esac
+        return 0
+    fi
     case $PICK_KEY_ACTION in
         prev_value) PICK_KEY_ACTION=prev_bar ;;
         next_value) PICK_KEY_ACTION=next_bar ;;

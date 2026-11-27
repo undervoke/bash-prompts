@@ -26,6 +26,13 @@
 #   PICK_TAB        active tab's group ID: input/output; an unknown or unset
 #     ID starts at the first tab. On a tab with sub-tabs, the active sub-tab's.
 #   PICK_SUBTABS    root group IDs whose child groups show as sub-tabs.
+#   PICK_LEFTTABS   1 shows tabs in a column left of their rows, in place of
+#     PICK_TABS: the child groups of each root group, under its label. The
+#     rows of the active one show in a panel beside the column, titled with
+#     its label. PICK_TAB names it. PICK_SUBMIT_TAB shows as the last item of
+#     the column, without a panel, and submits on Toggle or Edit.
+#   PICK_LEFTTABS_FRAME 1 also frames the column and the panel, with
+#     PICK_PROMPT on the top border.
 # Value rows (pick_choices) additionally use:
 #   PICK_VALUES[i]  comma-separated values; a row always holds one of them.
 #   PICK_CURRENT[i] value the row starts from; unset uses the first value.
@@ -141,9 +148,12 @@
 # Toggle edits. Both run an action in the submit tab. Up from the first row
 # focuses the sub-tabs, if any, then the tabs, where prev/next value move
 # between them; prev/next tab go through sub-tabs in turn. Esc leaves the
-# rows for the sub-tabs or tabs, and the sub-tabs for the tabs. All and Clear
-# bindings apply only to multiselect and dependencies; tab bindings only with
-# PICK_TABS.
+# rows for the sub-tabs or tabs, and the sub-tabs for the tabs. Prev value and
+# Esc leave the rows for the column of left tabs, so values there turn one
+# way only; in the column Up/Down move between tabs, and next value, Toggle,
+# and Edit open the focused one. All and Clear bindings apply only to
+# multiselect and dependencies; tab bindings only with PICK_TABS or
+# PICK_LEFTTABS.
 # Back applies to every entry point but pick_run.
 #
 # Styles are fixed by role: bold cyan title, cyan group headers, bold focused
@@ -170,6 +180,8 @@ PICK_GROUP_TAIL=()
 PICK_TABS=0
 PICK_TAB=
 PICK_SUBTABS=()
+PICK_LEFTTABS=0
+PICK_LEFTTABS_FRAME=0
 PICK_SUBMIT_TAB=
 PICK_CONFIRM_PROMPT=
 PICK_REVIEW=
@@ -238,6 +250,11 @@ PICK_PAGE_OFFSET=()
 PICK_PAGE_AT=0
 PICK_PAGE_OF=0
 PICK_CHILD_TABS=()
+PICK_SIDE_KIND=()
+PICK_SIDE_REF=()
+PICK_SIDE_AT=0
+PICK_SIDE_CELLS=0
+PICK_SIDE_SUBMIT=0
 PICK_BAR_LEFT=-1
 PICK_BAR_RIGHT=-1
 PICK_SUBMIT_GROUP=-1

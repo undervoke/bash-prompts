@@ -30,6 +30,7 @@ pick_interact() {
     PICK_MSG=
     PICK_FIELD=
     PICK_ON_TABS=0
+    PICK_SIDE_SUBMIT=0
     PICK_CONFIRMING=0
     PICK_NO_WINDOW=0
     PICK_GOT_SIGNAL=
@@ -80,7 +81,7 @@ pick_interact() {
                         PICK_CURSOR=$((${#PICK_FOCUS[@]} - 1))
                     fi
                 elif ((PICK_CURSOR > 0)); then PICK_CURSOR=$((PICK_CURSOR - 1))
-                elif ((${#PICK_TAB_GROUPS[@]})); then
+                elif ((${#PICK_TAB_GROUPS[@]})) && ! pick_left_tabs; then
                     PICK_ON_TABS=1
                     ((!PICK_TAB_SUBS[PICK_TAB_AT])) || PICK_ON_TABS=2
                 elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then PICK_CURSOR=$((${#PICK_FOCUS[@]} - 1)); fi
@@ -92,13 +93,16 @@ pick_interact() {
                 elif ((PICK_CURSOR < ${#PICK_FOCUS[@]}-1)); then PICK_CURSOR=$((PICK_CURSOR + 1))
                 elif [[ ${PICK_WRAP_NAVIGATION:-1} != 0 ]]; then
                     PICK_CURSOR=0
-                    if ((${#PICK_TAB_GROUPS[@]})); then PICK_ON_TABS=1; fi
+                    if ((${#PICK_TAB_GROUPS[@]})) && ! pick_left_tabs; then PICK_ON_TABS=1; fi
                 fi
                 ;;
             leave)
                 PICK_MSG=
-                if ((!PICK_ON_TABS && PICK_TAB_SUBS[PICK_TAB_AT])); then PICK_ON_TABS=2; else PICK_ON_TABS=1; fi
+                if ((!PICK_ON_TABS && PICK_TAB_SUBS[PICK_TAB_AT])) && ! pick_left_tabs; then PICK_ON_TABS=2; else PICK_ON_TABS=1; fi
                 ;;
+            open) PICK_MSG=; PICK_ON_TABS=0 ;;
+            side_prev) PICK_MSG=; pick_side_move -1 ;;
+            side_next) PICK_MSG=; pick_side_move 1 ;;
             prev_group) PICK_MSG=; pick_jump_group -1 ;;
             next_group) PICK_MSG=; pick_jump_group 1 ;;
             prev_tab) PICK_MSG=; pick_switch_page -1 ;;

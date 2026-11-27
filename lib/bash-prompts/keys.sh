@@ -43,11 +43,28 @@ pick_hint() {
         done
         verbs[${#verbs[@]}]=tabs
         help[${#help[@]}]=Esc
+        # Prev value leaves for the column of left tabs too.
+        if pick_left_tabs && [[ ${help[6]} != off ]]; then
+            help[${#help[@]} - 1]="${help[6]}/Esc"
+            verbs[6]=-
+            [[ ${verbs[7]} == - ]] || verbs[7]=$turn
+        fi
     fi
     if ((PICK_ON_TABS && !PICK_CONFIRMING)); then
         turn=tab
         verbs[2]=-; verbs[3]=-; verbs[4]=-; verbs[5]=-; verbs[6]=prev; verbs[7]=next; verbs[8]=-; verbs[9]=-
         [[ $PICK_MODE != single ]] || verbs[12]=-
+        # The left column goes up and down, and opens its tab to the right;
+        # its submit item submits instead.
+        if pick_left_tabs; then move=tab; verbs[6]=-; verbs[7]=open; fi
+        if pick_left_tabs && ((PICK_SIDE_SUBMIT)); then
+            verbs[7]=-
+            verbs[8]=submit
+            if [[ ${help[9]} != off ]]; then
+                [[ ${help[8]} == off ]] && help[8]=${help[9]} || help[8]="${help[8]}/${help[9]}"
+                help[9]=off
+            fi
+        fi
     fi
     # Each pair shares one segment when both its keys are bound.
     if [[ ${help[0]} != off && ${help[1]} != off ]]; then
@@ -192,7 +209,7 @@ pick_prepare_keys() {
     PICK_KEY_HELP=()
     pick_bind_keys up "${PICK_KEYS_UP[@]}" || return 1
     pick_bind_keys down "${PICK_KEYS_DOWN[@]}" || return 1
-    if [[ ${PICK_TABS:-0} == 1 ]]; then
+    if [[ ${PICK_TABS:-0} == 1 || ${PICK_LEFTTABS:-0} == 1 ]]; then
         pick_bind_keys prev_tab "${PICK_KEYS_PREV_TAB[@]}" || return 1
         pick_bind_keys next_tab "${PICK_KEYS_NEXT_TAB[@]}" || return 1
     else
@@ -201,7 +218,7 @@ pick_prepare_keys() {
     fi
     pick_bind_keys prev_group "${PICK_KEYS_PREV_GROUP[@]}" || return 1
     pick_bind_keys next_group "${PICK_KEYS_NEXT_GROUP[@]}" || return 1
-    if [[ $PICK_MODE == choices && $PICK_ALONE == 0 || ${PICK_TABS:-0} == 1 ]]; then
+    if [[ $PICK_MODE == choices && $PICK_ALONE == 0 || ${PICK_TABS:-0} == 1 || ${PICK_LEFTTABS:-0} == 1 ]]; then
         pick_bind_keys prev_value "${PICK_KEYS_PREV_VALUE[@]}" || return 1
         pick_bind_keys next_value "${PICK_KEYS_NEXT_VALUE[@]}" || return 1
     else

@@ -256,6 +256,67 @@ reaches the sub-tabs, then the tabs; Left and Right change the row that has the
 focus, and a tab reopens at the sub-tab it showed last. Esc leaves the rows for
 the sub-tabs, and the sub-tabs for the tabs.
 
+### Left tabs
+
+`PICK_LEFTTABS=1` shows tabs in a column left of their rows instead of
+`PICK_TABS`: the child groups of each root group, under its label. The rows of
+the active tab show in a panel beside the column, titled with its label, and
+the active tab is a box open toward the panel. `PICK_TAB` names the active tab,
+input and output. The [submit tab](#submit-tab-and-confirmation) is the last
+item of the column, without a panel or a box: Toggle or Edit on it submits,
+through the confirmation if there is one. Blank lines set the groups of the
+column apart by the same rule as rows. `PICK_LEFTTABS_FRAME=1` also frames the
+column and the panel, with `PICK_PROMPT` on the top border.
+
+```bash
+PICK_PROMPT='Shared actions'
+PICK_LEFTTABS=1
+PICK_LEFTTABS_FRAME=1
+pick_group windows 'Tabs & windows'
+pick_group new-tab 'New tab' windows
+pick_group commands 'Find & commands'
+pick_group find 'Find' commands
+pick_group find-apps 'Applications' find
+pick_group submit 'Submit'
+PICK_SUBMIT_TAB=submit
+PICK_TAB=find
+```
+
+```text
+╭─ Shared actions ────────────────────────────────────────────────╮
+│                        ╭─ Find ───────────────────────────────╮ │
+│   Tabs & windows       │              Default key  Keybinding │ │
+│     New tab            │ > Unified                 default    │ │
+│                        │                                      │ │
+│   Find & commands      │ Applications                         │ │
+│ ╭──────────────────────╯     VS Code  ⌘F           default    │ │
+│ │   Find                     iTerm2   ⌘F           ⌥F         │ │
+│ ╰──────────────────────╮     Chrome   ⌘F           default    │ │
+│     Find next          │                                      │ │
+│                        │                                      │ │
+│   Submit               │                                      │ │
+│                        ╰──────────────────────────────────────╯ │
+╰─────────────────────────────────────────────────────────────────╯
+```
+
+Left or Esc leaves the rows for the column, so Right and Toggle turn a value one
+way only. In the column Up and Down change the tab and reach the submit item
+after the last one; Right, Toggle, or Edit opens a tab, and Esc does what it is
+bound to. `[` and `]` change the tab from anywhere. The active tab is bold, and
+the focused item of the column reversed, or marked as `> Tab` without these
+styles. A count of changed rows keeps the room of its largest value, so the
+column keeps its width. The column takes up to a third of the width and scrolls
+to keep the active tab in view; the panel takes two rows and four columns more
+than its rows, and the outer frame as many. Below 40 columns inside the outer
+frame, or on a terminal too short for the panel, the tabs and the submit item
+share one row above the rows.
+
+In `examples/lefttabs.sh`, each key turns through `default`, `off`, and the
+keys entered, as in [keys in value rows](#keys-in-value-rows), and Enter enters a
+new one. `PICK_ON_CHANGE` sets every application that is not locked to the
+unified value, and `PICK_LABEL_STYLE` paints Unified bold, an application that
+differs from it and its Unified yellow, and the locked Chrome red.
+
 ## Value rows
 
 `pick_choices` gives each row a list of values and no checkbox: the row always
@@ -638,6 +699,7 @@ Use a name to run an example directly and return its exit status:
 ./demo lock
 ./demo choices
 ./demo subtabs
+./demo lefttabs
 ./demo keybinding
 ./demo keys
 ./demo nested
@@ -655,7 +717,10 @@ transitive automatic selection and cascading deselection, then prints each
 selected ID as direct or auto with the selected IDs that require it; `lock`
 shows the alternative locking behavior. `choices` shows value rows in tabs,
 with rows that turn off with what they require, a submit tab, and a confirmation; `subtabs` shows a tab
-whose sub-tabs share that frame, with headers inside a sub-tab; `keybinding` shows a key per row
+whose sub-tabs share that frame, with headers inside a sub-tab; `lefttabs` shows
+tabs in a left column with a submit item, where a unified key sets the key of
+every application that is not locked, labels warn where they differ, and a
+locked one is red; `keybinding` shows a key per row
 in columns, with a check, and a key on its own. `nested` demonstrates four levels,
 parent counts, tail ordering, separators inside and between groups, and
 Left/Right group jumps at depth 2; `separators` demonstrates dividers in a

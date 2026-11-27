@@ -45,6 +45,7 @@ pick_render() {
     # nothing so no further frame is composed for a dead screen.
     [[ -z ${PICK_GOT_SIGNAL:-} ]] || return 1
     local rows cols h d total drow start end title counter avail show_tabs show_subs framed walls inner show_title show_columns tab_spacer msg_rows msg_style msg_spacer hint_rows spacer pinned g
+    local left=0 side=0 outer=0 top n
     pick_term_size
     rows=$PICK_TROWS
     cols=$PICK_TCOLS
@@ -60,11 +61,19 @@ pick_render() {
     fi
     # A frame encloses the contents of the active tab, and another those of
     # its active sub-tab, if they fit: three rows for each, and their walls
-    # take four columns.
+    # take four columns. Left tabs instead open into a panel beside their
+    # column, which takes two rows and four columns more than its rows, and
+    # the outer frame as many.
     walls=0
-    ((!${#PICK_TAB_GROUPS[@]})) || walls=$((1 + (PICK_TAB_SUBS[PICK_TAB_AT] > 0)))
+    if pick_left_tabs; then
+        left=1
+        [[ ${PICK_LEFTTABS_FRAME:-0} != 1 ]] || outer=1
+        pick_side_list "$((cols - 1 - 4 * outer))"
+        if ((PICK_SIDE_CELLS)); then side=1; else outer=0; fi
+    elif ((${#PICK_TAB_GROUPS[@]})); then walls=$((1 + (PICK_TAB_SUBS[PICK_TAB_AT] > 0))); fi
     while :; do
         inner=$((cols - 1 - 4 * walls))
+        ((!side)) || inner=$((cols - 5 - 4 * outer - PICK_SIDE_CELLS))
         [[ $PICK_MODE != choices ]] || pick_value_column "$inner"
         PICK_WRAPPED=()
         msg_style=$PICK_MSG_STYLE
@@ -85,8 +94,8 @@ pick_render() {
         total=${#PICK_DKIND[@]}
         avail=$((rows - 1))
         show_tabs=0; show_subs=0; framed=0; show_title=0; show_columns=0; tab_spacer=0; spacer=0; msg_spacer=0
-        if ((${#PICK_TAB_GROUPS[@]} > 0 && avail > 0)); then show_tabs=1; avail=$((avail - 1)); fi
-        if ((show_tabs && PICK_TAB_SUBS[PICK_TAB_AT] && avail > 0)); then show_subs=1; avail=$((avail - 1)); fi
+        if ((${#PICK_TAB_GROUPS[@]} > 0 && !side && avail > 0)); then show_tabs=1; avail=$((avail - 1)); fi
+        if ((show_tabs && PICK_TAB_SUBS[PICK_TAB_AT] && !left && avail > 0)); then show_subs=1; avail=$((avail - 1)); fi
         if ((avail > 0)); then show_title=1; avail=$((avail - 1)); fi
         msg_rows=${#PICK_WRAPPED[@]}
         ((msg_rows > avail)) && msg_rows=$avail
@@ -97,11 +106,16 @@ pick_render() {
         if [[ $PICK_MODE == choices ]] && ((PICK_HEADED && avail > 0)); then show_columns=1; avail=$((avail - 1)); fi
         if ((avail > 0)); then spacer=1; avail=$((avail - 1)); fi
         if ((msg_rows > 0 && avail > 0)); then msg_spacer=1; avail=$((avail - 1)); fi
-        if ((walls && show_tabs && show_subs + 1 >= walls && avail >= 3 * walls)); then
+        # The panel holds the box of the active tab whole: three rows.
+        if ((side && show_title && avail >= 4 + outer - show_columns)); then
+            framed=1; avail=$((avail - 2 - outer))
+        elif ((walls && show_tabs && show_subs + 1 >= walls && avail >= 3 * walls)); then
             framed=1; avail=$((avail - 3 * walls))
         elif ((show_tabs && avail > 0)); then tab_spacer=1; avail=$((avail - 1)); fi
-        ((framed || !walls)) && break
+        ((framed || !walls && !side)) && break
         walls=0
+        side=0
+        outer=0
     done
     h=$((avail + 1))
     ((h > total)) && h=$total
@@ -128,11 +142,16 @@ pick_render() {
     counter=
     ((total <= h)) || counter="  ($((PICK_CURSOR + 1))/${#PICK_FOCUS[@]})"
     # Shorten the prompt rather than the position it is followed by.
-    pick_clip "$title" "$((cols - 1 - ${#counter}))"
-    ((show_title)) && pick_frame_row "$PICK_CLIPPED$counter" "$PICK_STYLE_TITLE"
+    pick_clip "$title" "$((cols - 1 - ${#counter} - 6 * outer))"
+    if ((outer)); then
+        pick_side_cap "$PICK_CLIPPED$counter" "$((cols - 1))" TITLE
+        pick_frame_painted "$PICK_TEXT"
+    elif ((show_title)); then pick_frame_row "$PICK_CLIPPED$counter" "$PICK_STYLE_TITLE"; fi
     ((show_tabs)) && pick_tab_rows "$((cols - 1))" "$framed" "$show_subs"
     PICK_WALLS=$walls
     ((tab_spacer)) && pick_frame_row ''
+    top=${#PICK_FRAME[@]}
+    ((!side)) || pick_frame_row ''
     if ((show_columns)); then
         pick_column_line
         pick_frame_row "$PICK_ROW" "$PICK_STYLE_MUTED"
@@ -158,6 +177,19 @@ pick_render() {
         pick_render_row "$d"
         pick_frame_row "$PICK_ROW" "$PICK_ROW_STYLE" "$PICK_ROW_SPANS"
     done
+    if ((side)); then
+        # The left column may be longer than the rows beside it.
+        n=$((${#PICK_FRAME[@]} - top - 1))
+        h=$((show_columns + avail + 1))
+        ((h <= ${#PICK_SIDE_KIND[@]})) || h=${#PICK_SIDE_KIND[@]}
+        for ((; n<h; n++)); do pick_frame_row ''; done
+        pick_frame_row ''
+        pick_side_rows "$top" "$n" "$inner" "$outer"
+    fi
+    if ((outer)); then
+        pick_box_rule "$((cols - 3))"
+        pick_frame_row "$PICK_BOX_BL$PICK_RULE$PICK_BOX_BR"
+    fi
     # The frame of a sub-tab is light, that of a tab heavy.
     if ((PICK_WALLS > 1)); then
         PICK_WALLS=1
@@ -241,6 +273,16 @@ pick_tab_rows() {
     # frame of its contents, framed the same way.
     local cols=$1 box=$2 subs=$3 first=${PICK_TAB_FIRST[PICK_TAB_AT]} k spans= IFS=' '
     local -a sp=() pages=("${PICK_PAGES[@]:first:${PICK_TAB_SUBS[PICK_TAB_AT]}}")
+    if pick_left_tabs; then
+        # Without room for their column, left tabs share one bar.
+        pages=("${PICK_PAGES[@]}")
+        ((PICK_SUBMIT_GROUP < 0)) || pages[${#pages[@]}]=$PICK_SUBMIT_GROUP
+        k=$PICK_PAGE_AT
+        ((!PICK_SIDE_SUBMIT)) || k=${#PICK_PAGES[@]}
+        pick_bar_line "$cols" "$k" "$((PICK_ON_TABS == 1))" 0 "${pages[@]}"
+        pick_frame_row "$PICK_ROW" '' "$PICK_ROW_SPANS"
+        return 0
+    fi
     if ((box)); then
         pick_folder_rows "$cols" "$PICK_TAB_AT" "$((PICK_ON_TABS == 1))" 0 "${PICK_TAB_GROUPS[@]}"
         ((!subs)) || PICK_WALLS=1
@@ -290,6 +332,152 @@ pick_folder_rows() {
     if ((right == edge)); then line+=$PICK_BOX_V
     else pick_box_rule "$((edge - right - 1))"; line+=$PICK_BOX_BL$PICK_RULE$PICK_BOX_TR; fi
     pick_frame_row "$line"
+}
+
+pick_frame_painted() {
+    # $1 = painted text; adds it as a row of its own width.
+    pick_frame_row ''
+    PICK_FRAME_LEFT[${#PICK_FRAME[@]} - 1]=$1
+    PICK_FRAME_WIDTH[${#PICK_FRAME[@]} - 1]=0
+}
+
+pick_paint_role() {
+    # $1 = role, $2 = text; sets PICK_TEXT to the text in the role's style.
+    local style=PICK_STYLE_$1
+    PICK_TEXT=$2
+    [[ -z ${!style} || -z $2 ]] || PICK_TEXT=${!style}$2$PICK_STYLE_RESET
+}
+
+pick_side_cap() {
+    # $1 = title, $2 = width, $3 = role of the title; sets PICK_TEXT to a top
+    # border that wide with the title at its left.
+    local title
+    pick_clip "$1" "$(($2 - 6))"
+    title=$PICK_CLIPPED
+    pick_clip "${title//…/.}" 9999
+    pick_box_rule "$(($2 - 5 - PICK_WIDTH))"
+    pick_paint_role "$3" "$title"
+    PICK_TEXT="$PICK_BOX_TL$PICK_BOX_H $PICK_TEXT $PICK_RULE$PICK_BOX_TR"
+}
+
+pick_side_list() {
+    # $1 = width; fills PICK_SIDE_KIND and PICK_SIDE_REF with the lines of
+    # the left column: each tab under the header of its root group, the
+    # active one in a box of three lines, and the submit item last, with
+    # blank lines between groups as between rows. Sets PICK_SIDE_AT to the
+    # box's first line, and PICK_SIDE_CELLS to the column's width before the
+    # panel's wall, up to a third of the width, or to 0 in a width under 40
+    # cells.
+    local k p first cells=0 max=$(($1 / 3)) apart=0
+    PICK_SIDE_KIND=()
+    PICK_SIDE_REF=()
+    PICK_SIDE_AT=0
+    pick_apart_level 0
+    for ((k=0; k<${#PICK_TAB_GROUPS[@]}; k++)); do
+        first=${PICK_TAB_FIRST[k]}
+        pick_side_apart "${PICK_TAB_GROUPS[k]}"
+        pick_side_line header "${PICK_TAB_GROUPS[k]}"
+        for ((p=first; p<first+PICK_TAB_SUBS[k]; p++)); do
+            if ((p != PICK_PAGE_AT)); then pick_side_line tab "${PICK_PAGES[p]}"; continue; fi
+            PICK_SIDE_AT=${#PICK_SIDE_KIND[@]}
+            pick_side_line top 0
+            pick_side_line active "${PICK_PAGES[p]}"
+            pick_side_line bottom 0
+        done
+    done
+    if ((PICK_SUBMIT_GROUP >= 0)); then
+        pick_side_apart "$PICK_SUBMIT_GROUP"
+        pick_side_line submit "$PICK_SUBMIT_GROUP"
+    fi
+    ((cells <= max)) || cells=$max
+    (($1 >= 40)) || cells=0
+    PICK_SIDE_CELLS=$cells
+}
+
+pick_side_apart() {
+    # $1 = group; adds a blank line for pick_side_list where the rule of
+    # pick_apart_key sets it apart from the line before.
+    pick_apart_key "$1" 0
+    ((!${#PICK_SIDE_KIND[@]} || PICK_APART_KEY == apart)) || pick_side_line blank 0
+    apart=$PICK_APART_KEY
+}
+
+pick_side_line() {
+    # $1 = kind, $2 = group; adds a line for pick_side_list. Headers stand
+    # two cells in, tabs four, and two more cells keep labels off the wall.
+    # A count takes the room of its largest value, so the column keeps its
+    # width while it changes.
+    local n=${#PICK_SIDE_KIND[@]} indent=4
+    PICK_SIDE_KIND[n]=$1
+    PICK_SIDE_REF[n]=$2
+    case $1 in tab|active) ;; header|submit) indent=2 ;; *) return 0 ;; esac
+    pick_group_title "$2"
+    case $PICK_MODE in
+        choices) PICK_TITLE="${PICK_GLABEL[$2]} ($PICK_GTOT)" ;;
+        multi|dependencies) PICK_TITLE="${PICK_GLABEL[$2]} ($PICK_GTOT/$PICK_GTOT)" ;;
+    esac
+    pick_clip "$PICK_TITLE" 9999
+    ((indent + PICK_WIDTH + 2 <= cells)) || cells=$((indent + PICK_WIDTH + 2))
+}
+
+pick_side_cell() {
+    # $1 = line of the left column; sets PICK_TEXT to it painted across the
+    # column, the panel's wall, and the space after. The box of the active
+    # tab replaces the wall where it opens onto the panel; past the last
+    # line the column is blank.
+    local kind=${PICK_SIDE_KIND[$1]-} cells=$PICK_SIDE_CELLS indent=4 role=PLAIN wall=$PICK_BOX_V lead label seg
+    case $kind in
+        top|bottom)
+            pick_box_rule "$((cells - 1))"
+            if [[ $kind == top ]]; then PICK_TEXT="$PICK_BOX_TL$PICK_RULE$PICK_BOX_BR "
+            else PICK_TEXT="$PICK_BOX_BL$PICK_RULE$PICK_BOX_TR "; fi
+            return 0
+            ;;
+        tab|active) ;;
+        header) indent=2 role=GROUP ;;
+        submit) indent=2; ((PICK_ON_TABS != 1 || !PICK_SIDE_SUBMIT)) || role=TAB ;;
+        *) printf -v PICK_TEXT '%*s' "$cells" ''; PICK_TEXT+="$wall "; return 0 ;;
+    esac
+    pick_group_title "${PICK_SIDE_REF[$1]}"
+    pick_fit "$PICK_TITLE" "$((cells - indent - 2))"
+    label=${PICK_FITTED%"${PICK_FITTED##*[! ]}"}
+    printf -v lead '%*s' "$((indent - 1))" ''
+    seg=" $label "
+    if [[ $kind == active ]]; then
+        wall=' '
+        lead=$PICK_BOX_V${lead#?}
+        role=FOCUS
+        ((PICK_ON_TABS != 1 || PICK_SIDE_SUBMIT)) || role=TAB
+    fi
+    # Without reverse video the focus shows as a mark.
+    [[ $role != TAB || -n $PICK_STYLE_TAB ]] || { lead=${lead%?}; seg="> $label "; }
+    pick_paint_role "$role" "$seg"
+    PICK_TEXT=$lead$PICK_TEXT${PICK_FITTED:${#label}+1}$wall' '
+}
+
+pick_side_rows() {
+    # $1 = frame row of the panel's top border, $2 = rows inside the panel,
+    # $3 = their width, $4 = 1 inside the outer frame. Puts the left column,
+    # the panel's walls and borders, and the outer frame's walls around
+    # those rows. The column scrolls to show the box of the active tab.
+    local top=$1 n=$2 width=$3 r d off=0 edge= wall= blank
+    if (($4)); then edge="$PICK_BOX_V "; wall=" $PICK_BOX_V"; fi
+    ((PICK_SIDE_AT + 3 <= n)) || off=$((PICK_SIDE_AT + 3 - n))
+    printf -v blank '%*s' "$PICK_SIDE_CELLS" ''
+    pick_side_cap "${PICK_GLABEL[PICK_ROOT]}" "$((width + 4))" PLAIN
+    PICK_FRAME_LEFT[top]=$edge$blank$PICK_TEXT$wall
+    PICK_FRAME_WIDTH[top]=0
+    for ((r=0; r<n; r++)); do
+        d=$((top + 1 + r))
+        pick_side_cell "$((off + r))"
+        PICK_FRAME_LEFT[d]=$edge$PICK_TEXT
+        PICK_FRAME_WIDTH[d]=$width
+        PICK_FRAME_RIGHT[d]=" $PICK_BOX_V$wall"
+    done
+    d=$((top + n + 1))
+    pick_box_rule "$((width + 2))"
+    PICK_FRAME_LEFT[d]=$edge$blank$PICK_BOX_BL$PICK_RULE$PICK_BOX_BR$wall
+    PICK_FRAME_WIDTH[d]=0
 }
 
 pick_box_rule() {
