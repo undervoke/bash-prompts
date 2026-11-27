@@ -42,7 +42,16 @@
 #     row. PICK_VALUES are then fixed values beside the edited one, and
 #     PICK_CURRENT and PICK_CHOICE may be any text.
 #   PICK_FORMAT[i]  function that shows the value: sets PICK_TEXT from the value
-#     in $1 and the row index in $2.
+#     in $1 and the row index in $2. Every change shows all values again, so
+#     it may show what other rows hold.
+#   PICK_LABEL_STYLE[i] strong, warning, or error: the label in bold, or in
+#     the warning or error color, also on a read-only row; bold too while
+#     the row has the focus.
+#   PICK_ON_CHANGE  function run with the row index after a row takes a value,
+#     and once without one before the first draw, with PICK_RESULT settled.
+#     It may set PICK_CHOICE of any row, which an edit row keeps as if it had
+#     been entered, and PICK_LABEL_STYLE; the rows then settle again and show
+#     again. Its own changes do not run it again.
 #   PICK_SUBMIT_TAB group ID of a root group without items, shown as the last
 #     tab with a Submit and a Cancel action.
 #   PICK_CONFIRM_PROMPT when set, submission first opens a screen with this
@@ -183,6 +192,7 @@ PICK_WHILE_OFF=()
 PICK_RESULT=()
 PICK_EDIT=()
 PICK_FORMAT=()
+PICK_LABEL_STYLE=()
 PICK_COLUMNS=()
 PICK_CELLS=()
 PICK_KEYBINDING_DEFAULT=()

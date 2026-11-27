@@ -344,7 +344,9 @@ mixes with other rows and shares their tabs, prerequisites, and result.
 |---|---|
 | `PICK_EDIT` | Function Edit runs for the row, as `function <row index>` in the calling shell. It finds the row's value in `PICK_VALUE`, sets `PICK_VALUE`, and returns `0` to change the row; another status leaves it. It must not print, read standard input, or start another prompt, because the prompt still owns the terminal. |
 | `PICK_VALUES` | For an edit row, the fixed values offered beside an edited one; may be empty. |
-| `PICK_FORMAT` | Function that shows the row's value, as `function <value> <row index>`; it sets `PICK_TEXT`. |
+| `PICK_FORMAT` | Function that shows the row's value, as `function <value> <row index>`; it sets `PICK_TEXT`. Every change shows all values again, so it may show what other rows hold. |
+| `PICK_LABEL_STYLE` | `strong`, `warning`, or `error`: the label in bold, or in the warning or error color, also on a read-only row; bold too while the row has the focus. |
+| `PICK_ON_CHANGE` | Function run as `function <row index>` after a row takes a value by Toggle, Prev/next value, or Edit, and once as `function` before the first draw, with `PICK_RESULT` settled. It may set `PICK_CHOICE` of any row and `PICK_LABEL_STYLE`; the rows then settle again and every row shows again. A choice it sets on an edit row is kept among that row's values as if entered; on another row it must be one of its `PICK_VALUES`. Its own changes do not run it again, and the message names the rows they change. Like `PICK_EDIT`, it must not print, read standard input, or start another prompt. |
 | `PICK_CELLS` | Tab-separated text for the columns between the label and the value. |
 | `PICK_COLUMNS` | Headers of the label, each cell, and the value, in order. Omitted ones are blank. |
 

@@ -254,8 +254,9 @@ pick_wrap() {
 
 pick_paint_line() {
     # Styles PICK_CLIPPED, the text of frame row $1, into PICK_LINE: the
-    # row's own style, then each span's style from its offset on.
-    local text=$PICK_CLIPPED style=${PICK_FRAME_STYLE[$1]-} at=0 k=0 end part IFS=' '
+    # row's own style, then each span's style from its offset on. A span may
+    # join roles with +, such as FOCUS+WARNING.
+    local text=$PICK_CLIPPED style=${PICK_FRAME_STYLE[$1]-} at=0 k=0 end part role IFS=' '
     local -a spans=(${PICK_FRAME_SPANS[$1]-})
     PICK_LINE=
     while true; do
@@ -265,8 +266,11 @@ pick_paint_line() {
         if [[ -n $style && -n $part ]]; then part="$style$part$PICK_STYLE_RESET"; fi
         PICK_LINE+=$part
         ((end < ${#text})) || break
-        style=PICK_STYLE_${spans[k + 1]}
-        style=${!style}
+        style=
+        for role in ${spans[k + 1]//+/ }; do
+            role=PICK_STYLE_$role
+            style+=${!role}
+        done
         at=$end
         k=$((k + 2))
     done

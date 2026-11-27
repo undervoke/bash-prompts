@@ -64,6 +64,7 @@ pick_prepare_choices() {
         done
     done
     pick_settle
+    pick_on_change
 }
 
 pick_settle() {
@@ -279,6 +280,7 @@ pick_take_value() {
     PICK_CHOICE[idx]=$2
     [[ -z ${PICK_EDIT[idx]-} ]] || pick_keep "$idx" "$2"
     pick_settle
+    pick_on_change "$idx"
     for ((i=0; i<${#PICK_LABEL[@]}; i++)); do
         [[ $i != "$idx" && ${PICK_RESULT[i]} != "${before[i]}" ]] || continue
         also="${also:+$also, }${PICK_LABEL[i]}"
@@ -289,6 +291,23 @@ pick_take_value() {
         notes="${notes:+$notes }Same key as $PICK_DEPNAMES."
     fi
     [[ -z $notes ]] || pick_message "$PICK_STYLE_WARNING" "${PICK_MSG:+$PICK_MSG }$notes"
+}
+
+pick_on_change() {
+    # $1 = row that took a value, or none before the first draw. Runs
+    # PICK_ON_CHANGE, which may set the choices and label styles of rows; an
+    # edit row keeps a choice set there as if it had been entered, and the
+    # rows settle again.
+    local i
+    local -a before=()
+    [[ -n ${PICK_ON_CHANGE-} ]] || return 0
+    for i in "${!PICK_CHOICE[@]}"; do before[i]=${PICK_CHOICE[i]}; done
+    "$PICK_ON_CHANGE" "$@"
+    for i in "${!PICK_CHOICE[@]}"; do
+        [[ -n ${PICK_EDIT[i]-} && ${PICK_CHOICE[i]} != "${before[i]-}" ]] || continue
+        pick_keep "$i" "${PICK_CHOICE[i]}"
+    done
+    pick_settle
 }
 
 pick_refuse_choices() {
@@ -440,7 +459,7 @@ pick_column_line() {
 
 pick_value_line() {
     # $1 = row, $2 = focus position, $3 = indent. Also sets PICK_NOTES.
-    local idx=$1 notes=${PICK_NOTE[$1]-} role=PLAIN lead="$3  "
+    local idx=$1 notes=${PICK_NOTE[$1]-} role=PLAIN lead="$3  " base=PLAIN tone= spans=
     # Neither changes until a value does.
     if [[ -z ${PICK_SHOWN[idx]+set} ]]; then
         pick_format_value "$idx" "${PICK_RESULT[idx]}"
@@ -458,11 +477,20 @@ pick_value_line() {
     if ((PICK_STUCK[idx])); then
         PICK_ROW_STYLE=$PICK_STYLE_MUTED
         role=MUTED
+        base=MUTED
     fi
     if (($2 == PICK_AT)); then
         lead="$3> "
         PICK_ROW_STYLE=$PICK_STYLE_FOCUS
+        base=FOCUS
     fi
+    case ${PICK_LABEL_STYLE[idx]-} in
+        strong) tone=FOCUS ;;
+        warning) tone=WARNING ;;
+        error) tone=ERROR ;;
+    esac
+    # A focused label keeps the focus bold under its tone.
+    [[ -z $tone || $base != FOCUS ]] || tone=FOCUS+$tone
     [[ ${PICK_RESULT[idx]} == "${PICK_CURRENT[idx]}" ]] || role=CHANGED
     if [[ -n ${PICK_CLASH[idx]-} ]]; then
         role=ERROR
@@ -471,12 +499,14 @@ pick_value_line() {
     fi
     pick_fit "${PICK_LABEL[idx]}" "$((PICK_VALUE_COLUMN - ${#lead}))"
     PICK_ROW=$lead$PICK_FITTED
+    # The label's own style gives way to the row's after it.
+    [[ -z $tone ]] || spans="${#lead} $tone ${#PICK_ROW} $base "
     if ((${#PICK_CELL_COLUMNS[@]})); then
         pick_split_cells "${PICK_CELLS[idx]-}"
         pick_fit_cells
         PICK_ROW+=$PICK_FITTED_CELLS
     fi
-    PICK_ROW_SPANS="${#PICK_ROW} $role"
+    PICK_ROW_SPANS="$spans${#PICK_ROW} $role"
     PICK_ROW=$PICK_ROW${PICK_SHOWN[idx]}
     PICK_ROW_SPANS="$PICK_ROW_SPANS ${#PICK_ROW} MUTED"
     PICK_ROW="$PICK_ROW${notes:+  $notes}"
