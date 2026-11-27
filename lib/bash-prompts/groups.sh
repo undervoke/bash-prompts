@@ -333,17 +333,35 @@ pick_focus_row() {
     done
 }
 
+pick_apart_level() {
+    # $1 = root group; sets PICK_APART_LEVEL to how far below it the groups
+    # lie that blank rows set apart. The only group of a tab is already
+    # apart, so its children are set apart instead.
+    PICK_APART_LEVEL=0
+    (($1)) || return 0
+    case ${PICK_GCHILDREN[$1]} in ' g'*' '*) ;; ' g'*) PICK_APART_LEVEL=1 ;; esac
+}
+
+pick_apart_key() {
+    # $1 = group of a line, $2 = root group; sets PICK_APART_KEY to its
+    # ancestor, or itself, PICK_APART_LEVEL below the root's children, or to
+    # 0 when it lies above. A blank row goes between neighbors whose keys
+    # differ.
+    local g=$1 n=0
+    local -a up=()
+    while ((g > 0 && g != $2)); do up[n]=$g; n=$((n + 1)); g=${PICK_GPARENT[g]}; done
+    PICK_APART_KEY=0
+    ((n <= PICK_APART_LEVEL)) || PICK_APART_KEY=${up[n - 1 - PICK_APART_LEVEL]}
+}
+
 pick_build_rows() {
-    local i j g k s common context level count spaced=0
+    local i j g k s common context level count apart=0
     local -a path=() previous=() reverse=()
     PICK_FOCUS=(); PICK_FOCUS_ROW=(); PICK_DKIND=(); PICK_DREF=(); PICK_DGROUP=()
     if pick_on_submit_page; then PICK_FOCUS=("${#PICK_LABEL[@]}" "$((${#PICK_LABEL[@]} + 1))")
     else pick_walk_group "$PICK_ROOT"; fi
     [[ $PICK_MODE != choices ]] || pick_measure_values
-    # Blank rows set groups apart; the only group of a tab is already apart.
-    if ((PICK_ROOT)); then
-        case ${PICK_GCHILDREN[PICK_ROOT]} in ' g'*' '*) ;; ' g'*) spaced=1 ;; esac
-    fi
+    pick_apart_level "$PICK_ROOT"
 
     # A separator precedes its item and any newly entered headers. Its
     # context is the common ancestor, so it creates no group or indentation.
@@ -367,10 +385,11 @@ pick_build_rows() {
         for ((s=0; s<${#PICK_SEP_ANCHOR[@]}; s++)); do
             [[ ${PICK_SEP_ANCHOR[s]} != "$i" ]] || pick_display_row separator "$s" "$context"
         done
-        if ((k > 0 && count == ${#PICK_DKIND[@]})) &&
-           [[ ${previous[spaced]:-0} != "${path[spaced]:-0}" ]]; then
+        pick_apart_key "${PICK_IGROUP[i]}" "$PICK_ROOT"
+        if ((k > 0 && count == ${#PICK_DKIND[@]} && PICK_APART_KEY != apart)); then
             pick_display_row blank '' "$context"
         fi
+        apart=$PICK_APART_KEY
         for ((level=common; level<${#path[@]}; level++)); do
             g=${path[level]}
             [[ -n ${PICK_GLABEL[g]} ]] || continue
