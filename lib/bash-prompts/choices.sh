@@ -3,6 +3,9 @@
 
 pick_csv_has() {
     # $1 = value, $2 = CSV. The local keeps a caller's pick_split_csv result.
+    # A value the text does not contain is no token of it, which spares the
+    # split on most calls.
+    [[ $2 == *"$1"* ]] || return 1
     local -a PICK_SPLIT
     local k
     pick_split_csv "$2"

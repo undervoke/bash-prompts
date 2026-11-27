@@ -427,18 +427,29 @@ pick_build_rows() {
     return 0
 }
 
-pick_group_counts() {
-    local want=$1 i g
-    PICK_GTOT=0
-    PICK_GSEL=0
+pick_count_groups() {
+    # Fills PICK_GTOTS with the number of rows under each group and the root,
+    # and PICK_GSELS with those that change or are checked: each group's own
+    # rows, then added to every group above it.
+    local i g up
+    local -a tot=() sel=()
     for i in "${!PICK_IGROUP[@]}"; do
         g=${PICK_IGROUP[i]}
-        while ((g > 0 && g != want)); do g=${PICK_GPARENT[g]}; done
-        ((g == want)) || continue
-        PICK_GTOT=$((PICK_GTOT + 1))
+        tot[g]=$((${tot[g]:-0} + 1))
         if [[ $PICK_MODE == choices ]]; then
-            [[ ${PICK_RESULT[i]} == "${PICK_CURRENT[i]}" ]] || PICK_GSEL=$((PICK_GSEL + 1))
-        elif [[ ${PICK_STATE[i]:-0} == 1 ]]; then PICK_GSEL=$((PICK_GSEL + 1)); fi
+            [[ ${PICK_RESULT[i]} == "${PICK_CURRENT[i]}" ]] || sel[g]=$((${sel[g]:-0} + 1))
+        elif [[ ${PICK_STATE[i]:-0} == 1 ]]; then sel[g]=$((${sel[g]:-0} + 1)); fi
+    done
+    PICK_GTOTS=()
+    PICK_GSELS=()
+    for g in "${!tot[@]}"; do
+        up=$g
+        while :; do
+            PICK_GTOTS[up]=$((${PICK_GTOTS[up]:-0} + tot[g]))
+            PICK_GSELS[up]=$((${PICK_GSELS[up]:-0} + ${sel[g]:-0}))
+            ((up > 0)) || break
+            up=${PICK_GPARENT[up]}
+        done
     done
 }
 

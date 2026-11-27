@@ -59,6 +59,7 @@ pick_render() {
         pick_paint "$rows" "$cols"
         return
     fi
+    [[ $PICK_MODE == single ]] || pick_count_groups
     # A frame encloses the contents of the active tab, and another those of
     # its active sub-tab, if they fit: three rows for each, and their walls
     # take four columns. Left tabs instead open into a panel beside their
@@ -257,12 +258,15 @@ pick_header_line() {
 
 pick_group_title() {
     # Sets PICK_TITLE to the group's label and its counts: selected and total
-    # checkboxes, or a tab's value rows that change.
+    # checkboxes, or a tab's value rows that change, as pick_count_groups
+    # counted them for this frame.
+    local g=$1
     PICK_TITLE=${PICK_GLABEL[$1]}
     [[ $PICK_MODE != single ]] || return 0
     # The submit tab counts the rows of every tab.
-    if (($1 == PICK_SUBMIT_GROUP)); then pick_group_counts 0
-    else pick_group_counts "$1"; fi
+    ((g != PICK_SUBMIT_GROUP)) || g=0
+    PICK_GTOT=${PICK_GTOTS[g]:-0}
+    PICK_GSEL=${PICK_GSELS[g]:-0}
     if [[ $PICK_MODE != choices ]]; then PICK_TITLE="$PICK_TITLE ($PICK_GSEL/$PICK_GTOT)"
     elif ((PICK_GSEL)); then PICK_TITLE="$PICK_TITLE ($PICK_GSEL)"; fi
 }
